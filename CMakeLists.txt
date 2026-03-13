@@ -78,12 +78,22 @@ if (CLSPC_BUILD_TESTS)
 endif()
 
 
+
 if (CLSPC_BUILD_INTEGRATION_TESTS)
+
     add_executable(test_jdtls_real_spawn
         tests/test_jdtls_real_spawn.cpp
     )
     target_link_libraries(test_jdtls_real_spawn PRIVATE clspc)
     add_test(NAME test_jdtls_real_spawn COMMAND test_jdtls_real_spawn)
+
+
+    add_executable(test_session_initialize_real
+        tests/test_session_initialize_real.cpp
+    )
+    target_link_libraries(test_session_initialize_real PRIVATE clspc)
+    add_test(NAME test_session_initialize_real COMMAND test_session_initialize_real)
+
 endif()
 
 

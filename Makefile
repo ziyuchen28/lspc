@@ -1,5 +1,7 @@
 BUILD_DIR := build
 
+-include .env
+
 # test 
 T ?= .*
 
@@ -21,18 +23,23 @@ build: config
 build-integ: config-integ
 	cmake --build $(BUILD_DIR) -j -- --no-print-directory
 
-
-test_all: 
-	cd $(BUILD_DIR) && ctest --output-on-failure
-
-test_all_verbose: 
-	cd $(BUILD_DIR) && ctest --output-on-failure -V
-
-test_one: 
-	cd $(BUILD_DIR) && ctest -R $(T) --output-on-failure -V
-
 clean:
 	rm -rf $(BUILD_DIR)
+
+
+
+test_all: build
+	cd $(BUILD_DIR) && ctest --output-on-failure
+
+test_all_verbose: build 
+	cd $(BUILD_DIR) && ctest --output-on-failure -V
+
+test_one: build
+	cd $(BUILD_DIR) && ctest -R $(T) --output-on-failure -V
+
+test_integ: build-integ
+	cd $(BUILD_DIR) && CLSPC_TEST_JDTLS_HOME="$(CLSPC_TEST_JDTLS_HOME)" ctest -R $(T) --output-on-failure -V
+
 
 
 
