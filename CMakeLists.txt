@@ -14,6 +14,7 @@ endif()
 
 add_library(clspc
     src/uri.cpp
+    src/jdtls_paths.cpp
 )
 
 target_compile_features(clspc PUBLIC cxx_std_20)
@@ -23,11 +24,19 @@ target_include_directories(clspc
         ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
+
 if (CLSPC_BUILD_TESTS)
     enable_testing()
+
     add_executable(test_uri
         tests/test_uri.cpp
     )
     target_link_libraries(test_uri PRIVATE clspc)
     add_test(NAME test_uri COMMAND test_uri)
+    
+    add_executable(test_jdtls_paths
+        tests/test_jdtls_paths.cpp
+    )
+    target_link_libraries(test_jdtls_paths PRIVATE clspc)
+    add_test(NAME test_jdtls_paths COMMAND test_jdtls_paths)
 endif()
