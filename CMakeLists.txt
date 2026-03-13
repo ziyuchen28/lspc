@@ -7,6 +7,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_subdirectory(external/pcr)
 
 
+option(CLSPC_BUILD_INTEGRATION_TESTS "Build integration tests requiring a real JDTLS install" OFF)
 if(PROJECT_IS_TOP_LEVEL)
     option(CLSPC_BUILD_TESTS "Build clspc tests" ON)
 else()
@@ -62,4 +63,12 @@ if (CLSPC_BUILD_TESTS)
     target_link_libraries(test_jdtls_spawn PRIVATE clspc)
     add_test(NAME test_jdtls_spawn COMMAND test_jdtls_spawn)
 
+endif()
+
+if (CLSPC_BUILD_INTEGRATION_TESTS)
+    add_executable(test_jdtls_real_spawn
+        tests/test_jdtls_real_spawn.cpp
+    )
+    target_link_libraries(test_jdtls_real_spawn PRIVATE clspc)
+    add_test(NAME test_jdtls_real_spawn COMMAND test_jdtls_real_spawn)
 endif()
