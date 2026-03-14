@@ -36,6 +36,14 @@ public:
 
     void wait();
 
+    // document sync
+    int sync_disk_file(const std::filesystem::path &path);
+    int sync_text(const std::filesystem::path &path,
+                  std::string text,
+                  std::string language_id = "plaintext");
+    void close_file(const std::filesystem::path &path);
+
+
 private:
 
     // PIMPL idiom - avoid including a lot of pcr libs headers

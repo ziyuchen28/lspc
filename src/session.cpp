@@ -3,8 +3,10 @@
 #include "clspc/uri.h"
 
 #include <stdexcept>
-#include <string_view>
 #include <utility>
+#include <fstream>
+#include <sstream>
+#include <stdexcept>
 
 #include <nlohmann/json.hpp>
 
@@ -37,16 +39,51 @@ bool has_provider(const json &caps, const char *key)
     return !value.is_null();
 }
 
+
+std::string infer_language_id(const std::filesystem::path &path) 
+{
+    const std::string ext = path.extension().string();
+    if (ext == ".java") return "java";
+    if (ext == ".xml") return "xml";
+    if (ext == ".json") return "json";
+    if (ext == ".properties") return "properties";
+    return "plaintext";
+}
+
+
+std::string read_file_text(const std::filesystem::path &path) 
+{
+    std::ifstream in(path);
+    if (!in) {
+        throw std::runtime_error("failed to open file: " + path.string());
+    }
+    std::ostringstream out;
+    out << in.rdbuf();
+    return out.str();
+}
+
+
 }  // namespace
+
 
 
 struct Session::Impl 
 {
 
+    struct OpenDocument 
+    {
+        std::filesystem::path path;
+        std::string uri;
+        std::string text;
+        std::string language_id;
+        int version{0};
+    };
+
     SessionOptions options;
     pcr::proc::PipedChild child;
     pcr::channel::AnyStream io;
     pcr::rpc::Dispatcher rpc;
+    std::unordered_map<std::string, OpenDocument> docs_by_uri;
 
     Impl(pcr::proc::PipedChild c, SessionOptions opt)
         : child(std::move(c)),
@@ -207,6 +244,89 @@ void Session::wait()
 {
     impl_->child.wait();
 }
+
+
+int Session::sync_disk_file(const std::filesystem::path &path) 
+{
+    return sync_text(path, read_file_text(path), infer_language_id(path));
+}
+
+
+int Session::sync_text(const std::filesystem::path &path,
+                       std::string text,
+                       std::string language_id) 
+{
+    const auto abs = std::filesystem::absolute(path).lexically_normal();
+    const std::string uri = file_uri_from_path(abs);
+
+    auto it = impl_->docs_by_uri.find(uri);
+    if (it == impl_->docs_by_uri.end()) {
+        Impl::OpenDocument doc{
+            .path = abs,
+            .uri = uri,
+            .text = std::move(text),
+            .language_id = std::move(language_id),
+            .version = 1,
+        };
+
+        json params{
+            {"textDocument", {
+                {"uri", doc.uri},
+                {"languageId", doc.language_id},
+                {"version", doc.version},
+                {"text", doc.text},
+            }}
+        };
+
+        impl_->rpc.send_notification("textDocument/didOpen", params.dump());
+        impl_->docs_by_uri.emplace(uri, std::move(doc));
+        return 1;
+    }
+
+    if (it->second.text == text) {
+        return it->second.version;
+    }
+
+    it->second.text = std::move(text);
+    ++it->second.version;
+
+    json params{
+        {"textDocument", {
+            {"uri", it->second.uri},
+            {"version", it->second.version},
+        }},
+        {"contentChanges", json::array({
+            {
+                {"text", it->second.text},
+            }
+        })}
+    };
+
+    impl_->rpc.send_notification("textDocument/didChange", params.dump());
+    return it->second.version;
+}
+
+
+void Session::close_file(const std::filesystem::path &path) 
+{
+    const auto abs = std::filesystem::absolute(path).lexically_normal();
+    const std::string uri = file_uri_from_path(abs);
+
+    auto it = impl_->docs_by_uri.find(uri);
+    if (it == impl_->docs_by_uri.end()) {
+        return;
+    }
+
+    json params{
+        {"textDocument", {
+            {"uri", uri},
+        }}
+    };
+
+    impl_->rpc.send_notification("textDocument/didClose", params.dump());
+    impl_->docs_by_uri.erase(it);
+}
+
 
 
 }  // namespace clspc
