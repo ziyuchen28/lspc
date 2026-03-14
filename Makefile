@@ -41,7 +41,7 @@ test_integ: build-integ
 	cd $(BUILD_DIR) && CLSPC_TEST_JDTLS_HOME="$(CLSPC_TEST_JDTLS_HOME)" ctest -R $(T) --output-on-failure -V
 
 
-demo: build-integ
+demo:
 	cd $(BUILD_DIR) && ./dep_expand_demo \
 		--jdtls-home "$(CLSPC_TEST_JDTLS_HOME)" \
 		--root "$(CLSPC_DEMO_ROOT)" \

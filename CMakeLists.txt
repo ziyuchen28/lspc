@@ -22,6 +22,7 @@ add_library(clspc
     src/jdtls_spawn.cpp
     src/session.cpp
     src/inspect.cpp
+    src/source_window.cpp
 )
 
 target_compile_features(clspc PUBLIC cxx_std_20)
@@ -101,6 +102,12 @@ if (CLSPC_BUILD_TESTS)
     )
     target_link_libraries(test_session_call_hierarchy PRIVATE clspc)
     add_test(NAME test_session_call_hierarchy COMMAND test_session_call_hierarchy)
+
+    add_executable(test_source_window
+        tests/test_source_window.cpp
+    )
+    target_link_libraries(test_source_window PRIVATE clspc)
+    add_test(NAME test_source_window COMMAND test_source_window)
 
 
 endif()

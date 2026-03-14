@@ -1,6 +1,7 @@
 #include "clspc/inspect.h"
 #include "clspc/jdtls.h"
 #include "clspc/session.h"
+#include "clspc/source_window.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -143,7 +144,10 @@ void write_executable_script(const fs::path &path, const std::string &contents) 
                     fs::perm_options::replace);
 }
 
-bool is_under_root(const fs::path &path, const fs::path &root) {
+
+bool is_under_root(const fs::path &path, const fs::path &root) 
+{
+    // fs::canonical crash if file doesn't exists
     const fs::path abs_path = fs::weakly_canonical(path);
     const fs::path abs_root = fs::weakly_canonical(root);
 
@@ -158,6 +162,7 @@ bool is_under_root(const fs::path &path, const fs::path &root) {
 
     return it_root == abs_root.end();
 }
+
 
 std::optional<DocumentSymbol> find_method_recursive(const std::vector<DocumentSymbol> &symbols,
                                                     std::string_view method_name) {
@@ -270,6 +275,52 @@ void print_graph_node(const GraphNode &node, int depth = 0) {
 
     for (const auto &child : node.children) {
         print_graph_node(child, depth + 1);
+    }
+}
+
+
+std::string snippet_key(const GraphNode &node) 
+{
+    return node.item.path.generic_string() + "|" +
+           std::to_string(node.item.range.start.line) + ":" +
+           std::to_string(node.item.range.start.character) + "|" +
+           std::to_string(node.item.range.end.line) + ":" +
+           std::to_string(node.item.range.end.character);
+}
+
+
+void print_graph_snippets(const GraphNode &node,
+                          const fs::path &repo_root,
+                          std::unordered_set<std::string> &seen,
+                          std::size_t context_before,
+                          std::size_t context_after) 
+{
+    if (!node.item.path.empty() && is_under_root(node.item.path, repo_root)) {
+        const std::string key = snippet_key(node);
+        if (seen.insert(key).second) {
+            const SourceWindow window =
+                extract_source_window(node.item.path,
+                                      node.item.range,
+                                      context_before,
+                                      context_after);
+
+            std::cout << "---- "
+                      << node.item.path.filename().string()
+                      << " :: "
+                      << node.item.name
+                      << "  stop="
+                      << (node.stop_reason.empty() ? "<none>" : node.stop_reason)
+                      << "  [" << window.start_line << "-" << window.end_line << "]\n";
+            std::cout << window.text << "\n\n";
+        }
+    }
+
+    for (const auto &child : node.children) {
+        print_graph_snippets(child,
+                             repo_root,
+                             seen,
+                             context_before,
+                             context_after);
     }
 }
 
@@ -390,6 +441,14 @@ int main(int argc, char **argv)
 
         print_section("expanded dependency tree");
         print_graph_node(graph);
+
+        print_section("fetched code snippets");
+        std::unordered_set<std::string> seen_snippets;
+        print_graph_snippets(graph,
+                             args.root,
+                             seen_snippets,
+                             1,   // context_before
+                             1);  // context_after
 
         session.shutdown_and_exit();
         session.wait();
