@@ -104,6 +104,7 @@ struct CallHierarchyItem
     std::string uri;
     Range range{};
     Range selection_range{};
+    std::optional<std::string> data_json;
 };
 
 

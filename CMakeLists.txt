@@ -89,6 +89,18 @@ if (CLSPC_BUILD_TESTS)
     target_link_libraries(test_session_document_symbols PRIVATE clspc)
     add_test(NAME test_session_document_symbols COMMAND test_session_document_symbols)
 
+    add_executable(test_session_definition
+        tests/test_session_definition.cpp
+    )
+    target_link_libraries(test_session_definition PRIVATE clspc)
+    add_test(NAME test_session_definition COMMAND test_session_definition)
+
+    add_executable(test_session_call_hierarchy
+        tests/test_session_call_hierarchy.cpp
+    )
+    target_link_libraries(test_session_call_hierarchy PRIVATE clspc)
+    add_test(NAME test_session_call_hierarchy COMMAND test_session_call_hierarchy)
+
 
 endif()
 
@@ -108,6 +120,12 @@ if (CLSPC_BUILD_INTEGRATION_TESTS)
     )
     target_link_libraries(test_session_initialize_real PRIVATE clspc)
     add_test(NAME test_session_initialize_real COMMAND test_session_initialize_real)
+
+    add_executable(test_session_document_symbols_real
+        tests/test_session_document_symbols_real.cpp
+    )
+    target_link_libraries(test_session_document_symbols_real PRIVATE clspc)
+    add_test(NAME test_session_document_symbols_real COMMAND test_session_document_symbols_real)
 
 endif()
 

@@ -151,6 +151,156 @@ std::vector<DocumentSymbol> parse_document_symbols(const json &j)
 }
 
 
+json json_position(const Position &p) 
+{
+    return json{
+        {"line", p.line},
+        {"character", p.character},
+    };
+}
+
+
+json json_range(const Range &r) {
+    return json{
+        {"start", json_position(r.start)},
+        {"end", json_position(r.end)},
+    };
+}
+
+
+Location parse_location_object(const json &j) 
+{
+    // support both Location and LocationLink shapes.
+    if (j.contains("targetUri")) {
+        const std::string uri = j.at("targetUri").get<std::string>();
+        return Location{
+            .path = path_from_file_uri(uri),
+            .uri = uri,
+            .range = parse_range(j.at("targetRange")),
+        };
+    }
+    const std::string uri = j.at("uri").get<std::string>();
+    return Location{
+        .path = path_from_file_uri(uri),
+        .uri = uri,
+        .range = parse_range(j.at("range")),
+    };
+}
+
+
+std::vector<Location> parse_locations(const json &j) 
+{
+    std::vector<Location> out;
+
+    if (j.is_null()) {
+        return out;
+    }
+
+    if (j.is_object()) {
+        out.push_back(parse_location_object(j));
+        return out;
+    }
+
+    if (j.is_array()) {
+        for (const auto &item : j) {
+            out.push_back(parse_location_object(item));
+        }
+    }
+
+    return out;
+}
+
+
+
+CallHierarchyItem parse_call_hierarchy_item(const json &j) 
+{
+    const std::string uri = j.value("uri", "");
+
+    CallHierarchyItem item;
+    item.name = j.value("name", "");
+    item.detail = j.value("detail", "");
+    item.kind = parse_symbol_kind(j.value("kind", 6));
+    item.uri = uri;
+    if (!uri.empty()) {
+        item.path = path_from_file_uri(uri);
+    }
+
+    if (j.contains("range")) {
+        item.range = parse_range(j.at("range"));
+    }
+    if (j.contains("selectionRange")) {
+        item.selection_range = parse_range(j.at("selectionRange"));
+    } else {
+        item.selection_range = item.range;
+    }
+    if (j.contains("data")) {
+        item.data_json = j.at("data").dump();
+    }
+
+    return item;
+}
+
+
+std::vector<CallHierarchyItem> parse_call_hierarchy_items(const json &j) 
+{
+    std::vector<CallHierarchyItem> out;
+    if (j.is_null() || !j.is_array()) {
+        return out;
+    }
+    for (const auto &item : j) {
+        out.push_back(parse_call_hierarchy_item(item));
+    }
+
+    return out;
+}
+
+
+std::vector<OutgoingCall> parse_outgoing_calls(const json &j) 
+{
+    std::vector<OutgoingCall> out;
+    if (j.is_null() || !j.is_array()) {
+        return out;
+    }
+
+    for (const auto &item : j) {
+        OutgoingCall call;
+        call.to = parse_call_hierarchy_item(item.at("to"));
+
+        if (item.contains("fromRanges") && item.at("fromRanges").is_array()) {
+            for (const auto &r : item.at("fromRanges")) {
+                call.from_ranges.push_back(parse_range(r));
+            }
+        }
+
+        out.push_back(std::move(call));
+    }
+
+    return out;
+}
+
+
+json json_call_hierarchy_item(const CallHierarchyItem &item) 
+{
+    json j{
+        {"name", item.name},
+        {"kind", static_cast<int>(item.kind)},
+        {"uri", item.uri},
+        {"range", json_range(item.range)},
+        {"selectionRange", json_range(item.selection_range)},
+    };
+
+    if (!item.detail.empty()) {
+        j["detail"] = item.detail;
+    }
+
+    if (item.data_json.has_value()) {
+        j["data"] = json::parse(*item.data_json);
+    }
+
+    return j;
+}
+
+
 
 }  // namespace
 
@@ -445,6 +595,107 @@ std::vector<DocumentSymbol> Session::document_symbols(const std::filesystem::pat
 
         if (!impl_->rpc.pump_once()) {
             throw std::runtime_error("LSP EOF while waiting for documentSymbol response");
+        }
+    }
+}
+
+
+std::vector<Location> Session::definition(const std::filesystem::path &path, Position pos) 
+{
+    const auto abs = std::filesystem::absolute(path).lexically_normal();
+    sync_disk_file(abs);
+
+    json params{
+        {"textDocument", {
+            {"uri", file_uri_from_path(abs)},
+        }},
+        {"position", json_position(pos)},
+    };
+
+    const pcr::rpc::Id id =
+        impl_->rpc.send_request("textDocument/definition", params.dump());
+
+    for (;;) {
+        if (auto response = impl_->rpc.take_response(id); response.has_value()) {
+            if (response->error) {
+                throw std::runtime_error("definition failed: " +
+                                         response->error->message);
+            }
+            const auto result_json =
+                response->result_json ? json::parse(*response->result_json)
+                                      : json(nullptr);
+            return parse_locations(result_json);
+        }
+
+        if (!impl_->rpc.pump_once()) {
+            throw std::runtime_error("LSP EOF while waiting for definition response");
+        }
+    }
+}
+
+
+std::vector<CallHierarchyItem> Session::prepare_call_hierarchy(const std::filesystem::path &path,
+                                                               Position pos) 
+{
+    const auto abs = std::filesystem::absolute(path).lexically_normal();
+    sync_disk_file(abs);
+
+    json params{
+        {"textDocument", {
+            {"uri", file_uri_from_path(abs)},
+        }},
+        {"position", json_position(pos)},
+    };
+
+    const pcr::rpc::Id id =
+        impl_->rpc.send_request("textDocument/prepareCallHierarchy", params.dump());
+
+    for (;;) {
+        if (auto response = impl_->rpc.take_response(id); response.has_value()) {
+            if (response->error) {
+                throw std::runtime_error("prepareCallHierarchy failed: " +
+                                         response->error->message);
+            }
+
+            const auto result_json =
+                response->result_json ? json::parse(*response->result_json)
+                                      : json(nullptr);
+
+            return parse_call_hierarchy_items(result_json);
+        }
+
+        if (!impl_->rpc.pump_once()) {
+            throw std::runtime_error("LSP EOF while waiting for prepareCallHierarchy response");
+        }
+    }
+}
+
+
+std::vector<OutgoingCall> Session::outgoing_calls(const CallHierarchyItem &item) 
+{
+    json params{
+        {"item", json_call_hierarchy_item(item)},
+    };
+
+    const pcr::rpc::Id id =
+        impl_->rpc.send_request("callHierarchy/outgoingCalls", params.dump());
+
+    for (;;) {
+        if (auto response = impl_->rpc.take_response(id); response.has_value()) {
+            if (response->error) {
+                throw std::runtime_error("outgoingCalls failed: " +
+                                         response->error->message);
+            }
+
+            const auto result_json =
+                response->result_json ? json::parse(*response->result_json)
+                                      : json(nullptr);
+
+            return parse_outgoing_calls(result_json);
+        }
+
+        if (!impl_->rpc.pump_once()) {
+            throw std::runtime_error("LSP EOF while waiting for outgoingCalls response");
         }
     }
 }

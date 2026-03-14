@@ -44,6 +44,12 @@ public:
     void close_file(const std::filesystem::path &path);
 
     std::vector<DocumentSymbol> document_symbols(const std::filesystem::path &path);
+    std::vector<Location> definition(const std::filesystem::path &path, Position pos);
+
+    std::vector<CallHierarchyItem> prepare_call_hierarchy(const std::filesystem::path &path,
+                                                          Position pos);
+
+    std::vector<OutgoingCall> outgoing_calls(const CallHierarchyItem &item);
 
 
 private:
