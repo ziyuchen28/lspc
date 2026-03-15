@@ -1,4 +1,5 @@
 #include "clspc/jdtls.h"
+#include "integ_test_helper.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -10,61 +11,8 @@
 namespace fs = std::filesystem;
 using namespace clspc::jdtls;
 
+
 namespace {
-
-void require(bool condition, const std::string &message) 
-{
-    if (!condition) {
-        std::cerr << "FAIL: " << message << "\n";
-        std::exit(1);
-    }
-}
-
-std::string real_jdtls_home() 
-{
-    if (const char *env = std::getenv("CLSPC_TEST_JDTLS_HOME")) {
-        return env;
-    }
-    require(false, "set CLSPC_TEST_JDTLS_HOME to the extracted JDTLS directory");
-    return {};
-}
-
-std::string real_java_bin() 
-{
-    if (const char* env = std::getenv("CLSPC_TEST_JAVA_BIN")) {
-        return env;
-    }
-    return "java";
-}
-
-std::string shell_quote_single(std::string_view s) 
-{
-    std::string out;
-    out.push_back('\'');
-    for (char ch : s) {
-        if (ch == '\'') {
-            out += "'\\''";
-        } else {
-            out.push_back(ch);
-        }
-    }
-    out.push_back('\'');
-    return out;
-}
-
-void write_executable_script(const fs::path &path, const std::string &contents) 
-{
-    std::ofstream out(path);
-    require(static_cast<bool>(out), "failed to create script: " + path.string());
-    out << contents;
-    out.close();
-
-    fs::permissions(path,
-                    fs::perms::owner_exec | fs::perms::owner_read | fs::perms::owner_write |
-                    fs::perms::group_exec | fs::perms::group_read |
-                    fs::perms::others_exec | fs::perms::others_read,
-                    fs::perm_options::replace);
-}
 
 std::string read_all_from_fd(int fd) 
 {
@@ -97,6 +45,7 @@ bool contains_any(std::string_view text,
 }  // namespace
 
 
+
 int main() 
 {
     const fs::path root =
@@ -113,31 +62,44 @@ int main()
     require(!ec, "failed to create repo dir");
 
     // w/a to add timeout before java, which doesn't work with exec sys call
-    const fs::path wrapper = root / "java-timebox.sh";
-    {
-        std::ofstream out(wrapper);
-        require(static_cast<bool>(out), "failed to create wrapper script");
+    std::string effective_java_bin = real_java_bin();
+    if (auto timeout_bin = timeout_bin_from_env(); timeout_bin.has_value()) {
+        const fs::path wrapper = root / "java-timebox.sh";
+        {
+            std::ofstream out(wrapper);
+            require(static_cast<bool>(out), "failed to create wrapper script");
 
-       out
-            << "#!/usr/bin/env bash\n"
-            << "set -euo pipefail\n"
-            << "exec timeout 4s "
-            << shell_quote_single(real_java_bin())
-            << " \"$@\"\n";
-        out.close();
+           out
+                << "#!/usr/bin/env bash\n"
+                << "set -euo pipefail\n"
+                << "exec timeout 4s "
+                << shell_quote_single(real_java_bin())
+                << " \"$@\"\n";
+            out.close();
 
-        fs::permissions(wrapper,
-                        fs::perms::owner_exec | fs::perms::owner_read | fs::perms::owner_write |
-                        fs::perms::group_exec | fs::perms::group_read |
-                        fs::perms::others_exec | fs::perms::others_read,
-                        fs::perm_options::replace);
+            fs::permissions(wrapper,
+                            fs::perms::owner_exec | fs::perms::owner_read | fs::perms::owner_write |
+                            fs::perms::group_exec | fs::perms::group_read |
+                            fs::perms::others_exec | fs::perms::others_read,
+                            fs::perm_options::replace);
+        }
+        effective_java_bin = wrapper.string();
+    }
+
+    std::cout << "launch mode: " << "\n";
+    std::cout << "java_bin=" << real_java_bin() << "\n";
+    if (effective_java_bin == real_java_bin()) {
+        std::cout << "timeout_wrapper=disabled\n";
+    } else {
+        std::cout << "timeout_wrapper=enabled\n";
+        std::cout << "effective_java_bin=" << effective_java_bin << "\n";
     }
 
     LaunchOptions opt;
     opt.jdtls_home = fs::path(real_jdtls_home());
     opt.workspace_dir = workspace;
     opt.root_dir = repo;
-    opt.java_bin = wrapper.string();
+    opt.java_bin = effective_java_bin;
     opt.log_protocol = false;
     opt.log_level = "INFO";
 

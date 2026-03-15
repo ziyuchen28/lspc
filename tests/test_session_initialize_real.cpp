@@ -50,6 +50,7 @@ int main()
                             fs::perms::others_exec | fs::perms::others_read,
                             fs::perm_options::replace);
         }
+        effective_java_bin = wrapper.string();
     }
 
 

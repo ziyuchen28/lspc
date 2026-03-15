@@ -108,31 +108,37 @@ public final class CheckoutService {
 }
 )");
 
-    // Timebox the real JVM/JDTLS process in the test so it cannot linger forever.
-    const fs::path wrapper = root / "java-timebox.sh";
-    {
-        std::ofstream out(wrapper);
-        require(static_cast<bool>(out), "failed to create wrapper script");
+    // w/a to add timeout before java, which doesn't work with exec sys call
+    std::string effective_java_bin = real_java_bin();
+    if (auto timeout_bin = timeout_bin_from_env(); timeout_bin.has_value()) {
+        const fs::path wrapper = root / "java-timebox.sh";
+        {
+            std::ofstream out(wrapper);
+            require(static_cast<bool>(out), "failed to create wrapper script");
 
-        out
-            << "#!/usr/bin/env bash\n"
-            << "set -euo pipefail\n"
-            << "exec timeout 12s "
-            << shell_quote_single(real_java_bin())
-            << " \"$@\"\n";
+           out
+                << "#!/usr/bin/env bash\n"
+                << "set -euo pipefail\n"
+                << "exec timeout 4s "
+                << shell_quote_single(real_java_bin())
+                << " \"$@\"\n";
+            out.close();
+
+            fs::permissions(wrapper,
+                            fs::perms::owner_exec | fs::perms::owner_read | fs::perms::owner_write |
+                            fs::perms::group_exec | fs::perms::group_read |
+                            fs::perms::others_exec | fs::perms::others_read,
+                            fs::perm_options::replace);
+        }
+        effective_java_bin = wrapper.string();
     }
 
-    fs::permissions(wrapper,
-                    fs::perms::owner_exec | fs::perms::owner_read | fs::perms::owner_write |
-                    fs::perms::group_exec | fs::perms::group_read |
-                    fs::perms::others_exec | fs::perms::others_read,
-                    fs::perm_options::replace);
 
     jdtls::LaunchOptions launch;
     launch.jdtls_home = fs::path(real_jdtls_home());
     launch.workspace_dir = workspace;
     launch.root_dir = repo;
-    launch.java_bin = wrapper.string();
+    launch.java_bin = effective_java_bin;
     launch.log_protocol = false;
     launch.log_level = "INFO";
 
