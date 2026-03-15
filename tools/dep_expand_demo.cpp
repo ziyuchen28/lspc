@@ -247,13 +247,23 @@ GraphNode expand_outgoing(Session &session,
     return node;
 }
 
+
 void print_section(const std::string &title) {
     std::cout << "\n=== " << title << " ===\n";
 }
 
-void print_graph_node(const GraphNode &node, int depth = 0) {
-    const std::string indent(static_cast<std::size_t>(depth * 2), ' ');
 
+void print_graph_node(const GraphNode &node, int depth = 0) 
+{
+    const std::string indent(static_cast<std::size_t>(depth * 2), ' ');
+    std::cout << indent
+              << "- "
+              << "depth="
+              << depth
+              << "  "
+              << "path="
+              << node.item.path
+              << std::endl;
     std::cout << indent
               << "- " << node.item.name
               << "  logical=" << logical_name(node.item.name)
