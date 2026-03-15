@@ -319,6 +319,11 @@ struct Session::Impl
         int version{0};
     };
 
+    Impl(const Impl &) = delete;
+    Impl &operator=(const Impl &) = delete;
+    Impl(Impl &&) = delete;
+    Impl &operator=(Impl &&) = delete;
+
     SessionOptions options;
     pcr::proc::PipedChild child;
     pcr::channel::AnyStream io;
