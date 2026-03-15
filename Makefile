@@ -2,6 +2,9 @@ BUILD_DIR := build
 
 -include .env
 
+export CLSPC_JAVA_BIN
+export CLSPC_JDTLS_HOME
+
 # test 
 T ?= .*
 
@@ -37,13 +40,16 @@ test_all_verbose: build
 test_one: build
 	cd $(BUILD_DIR) && ctest -R $(T) --output-on-failure -V
 
-test_integ: build-integ
-	cd $(BUILD_DIR) && CLSPC_TEST_JDTLS_HOME="$(CLSPC_TEST_JDTLS_HOME)" ctest -R $(T) --output-on-failure -V
+# test_integ: build-integ
+# 	cd $(BUILD_DIR) && CLSPC_TEST_JDTLS_HOME="$(CLSPC_TEST_JDTLS_HOME)" ctest -R $(T) --output-on-failure -V
 
+test_integ: build-integ
+	cd $(BUILD_DIR) && ctest -R $(T) --output-on-failure -V
 
 demo:
 	cd $(BUILD_DIR) && ./dep_expand_demo \
-		--jdtls-home "$(CLSPC_TEST_JDTLS_HOME)" \
+		--java "$(CLSPC_JAVA_BIN)" \
+		--jdtls-home "$(CLSPC_JDTLS_HOME)" \
 		--root "$(CLSPC_DEMO_ROOT)" \
 		--workspace "$(CLSPC_DEMO_WORKSPACE)" \
 		--file "$(CLSPC_DEMO_FILE)" \
