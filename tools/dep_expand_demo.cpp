@@ -324,6 +324,18 @@ void print_graph_snippets(const GraphNode &node,
     }
 }
 
+
+std::optional<std::string> timeout_bin_from_env() 
+{
+    if (const char *env = std::getenv("CLSPC_TIMEOUT_BIN")) {
+        if (*env != '\0') {
+            return std::string(env);
+        }
+    }
+    return std::nullopt;
+}
+
+
 }  // namespace
 
 
@@ -340,30 +352,37 @@ int main(int argc, char **argv)
 
         fs::create_directories(args.workspace);
 
-        // Temporary timebox wrapper until shutdown/linger is cleaned up.
-        const fs::path wrapper = args.workspace / "java-timebox.sh";
-        {
-            std::ofstream out(wrapper);
-            require(static_cast<bool>(out), "failed to create wrapper script");
-            out
-                << "#!/usr/bin/env bash\n"
-                << "set -euo pipefail\n"
-                << "exec timeout 20s "
-                << shell_quote_single(args.java_bin)
-                << " \"$@\"\n";
-        }
+        std::string effective_java_bin = args.java_bin;
 
-        fs::permissions(wrapper,
-                        fs::perms::owner_exec | fs::perms::owner_read | fs::perms::owner_write |
-                        fs::perms::group_exec | fs::perms::group_read |
-                        fs::perms::others_exec | fs::perms::others_read,
-                        fs::perm_options::replace);
+        if (auto timeout_bin = timeout_bin_from_env(); timeout_bin.has_value()) {
+            const fs::path wrapper = args.workspace / "java-timebox.sh";
+            {
+                std::ofstream out(wrapper);
+                require(static_cast<bool>(out), "failed to create wrapper script");
+                out
+                    << "#!/usr/bin/env bash\n"
+                    << "set -euo pipefail\n"
+                    << "exec "
+                    << shell_quote_single(*timeout_bin)
+                    << " 20s "
+                    << shell_quote_single(args.java_bin)
+                    << " \"$@\"\n";
+            }
+
+            fs::permissions(wrapper,
+                            fs::perms::owner_exec | fs::perms::owner_read | fs::perms::owner_write |
+                            fs::perms::group_exec | fs::perms::group_read |
+                            fs::perms::others_exec | fs::perms::others_read,
+                            fs::perm_options::replace);
+
+            effective_java_bin = wrapper.string();
+        }
 
         jdtls::LaunchOptions launch;
         launch.jdtls_home = args.jdtls_home;
         launch.workspace_dir = args.workspace;
         launch.root_dir = args.root;
-        launch.java_bin = wrapper.string();
+        launch.java_bin = effective_java_bin;
         launch.log_protocol = false;
         launch.log_level = "INFO";
 
@@ -380,6 +399,15 @@ int main(int argc, char **argv)
         const InitializeResult init = session.initialize();
         print_initialize_result(std::cout, init);
         session.initialized();
+
+        print_section("launch mode");
+        std::cout << "java_bin=" << args.java_bin << "\n";
+        if (effective_java_bin == args.java_bin) {
+            std::cout << "timeout_wrapper=disabled\n";
+        } else {
+            std::cout << "timeout_wrapper=enabled\n";
+            std::cout << "effective_java_bin=" << effective_java_bin << "\n";
+        }
 
         std::vector<DocumentSymbol> symbols;
         std::optional<DocumentSymbol> method;
