@@ -18,6 +18,24 @@ using namespace clspc;
 namespace {
 
 
+bool same_path(const std::filesystem::path &lhs,
+               const std::filesystem::path &rhs) 
+{
+    namespace fs = std::filesystem;
+    std::error_code ec1;
+    std::error_code ec2;
+
+    const fs::path a = fs::weakly_canonical(lhs, ec1);
+    const fs::path b = fs::weakly_canonical(rhs, ec2);
+
+    if (!ec1 && !ec2) {
+        return a == b;
+    }
+
+    return lhs.lexically_normal() == rhs.lexically_normal();
+}
+
+
 std::optional<DocumentSymbol> find_method_recursive(const std::vector<DocumentSymbol> &symbols,
                                                     std::string_view method_name) {
     for (const auto &sym : symbols) {
@@ -54,7 +72,7 @@ const OutgoingCall *find_outgoing_call(const std::vector<OutgoingCall> &calls,
     for (const auto &call : calls) {
         std::cout << "to path: " << call.to.path << std::endl;
         std::cout << "expected: " << expected_file << std::endl;
-        if (call.to.path == expected_file &&
+        if (same_path(call.to.path, expected_file) &&
             logical_name(call.to.name) == expected_method) {
             return &call;
         }

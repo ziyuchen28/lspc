@@ -111,6 +111,7 @@ struct CallHierarchyItem
 struct OutgoingCall 
 {
     CallHierarchyItem to;
+    // grouping of different invocation on the same function
     std::vector<Range> from_ranges;
 };
 
