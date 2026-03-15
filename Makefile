@@ -32,19 +32,19 @@ clean:
 
 
 
-test_all: build
+test-all: build
 	cd $(BUILD_DIR) && ctest --output-on-failure
 
-test_all_verbose: build 
+test-all-verbose: build 
 	cd $(BUILD_DIR) && ctest --output-on-failure -V
 
-test_one: build
+test-one: build
 	cd $(BUILD_DIR) && ctest -R $(T) --output-on-failure -V
 
 # test_integ: build-integ
 # 	cd $(BUILD_DIR) && CLSPC_TEST_JDTLS_HOME="$(CLSPC_TEST_JDTLS_HOME)" ctest -R $(T) --output-on-failure -V
 
-test_integ: build-integ
+test-integ: build-integ
 	cd $(BUILD_DIR) && ctest -R $(T) --output-on-failure -V
 
 demo:

@@ -1,4 +1,4 @@
 integ tests
-make test_integ T=test_session_document_symbols_real
-make test_integ T=test_session_call_hierarchy_real
-make test_integ T=test_session_initialize_real
+make test-integ T=test_session_document_symbols_real
+make test-integ T=test_session_call_hierarchy_real
+make test-integ T=test_session_initialize_real
