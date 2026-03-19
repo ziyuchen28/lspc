@@ -179,6 +179,12 @@ if (CLSPC_BUILD_INTEGRATION_TESTS)
     target_link_libraries(dep_expand_demo PRIVATE clspc)
 
 
+    add_executable(dep_expand_demo2
+        tools/dep_expand_demo2.cpp
+    )
+    target_link_libraries(dep_expand_demo2 PRIVATE clspc)
+
+
 endif()
 
 

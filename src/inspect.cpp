@@ -1,7 +1,9 @@
 #include "clspc/inspect.h"
+#include "clspc/semantic.h"
 
 #include <ostream>
 #include <sstream>
+#include <iostream>
 
 namespace clspc {
 
@@ -171,6 +173,88 @@ void print_incoming_calls(std::ostream &os,
         }
     }
 }
+
+
+void print_section(const std::string &title) 
+{
+    std::cout << "\n=== " << title << " ===\n";
+}
+
+
+void print_expanded_node(const ExpandedNode &node, int depth) 
+{
+    const std::string indent(static_cast<std::size_t>(depth * 2), ' ');
+
+    std::cout << indent
+              << "- " << node.item.name
+              << "  logical=" << logical_name(node.item.name)
+              << "  kind=" << symbol_kind_name(node.item.kind)
+              << "  file=" << (node.item.path.empty() ? "<none>" : node.item.path.filename().string())
+              << "  range=" << format_range(node.item.range);
+
+    if (!node.stop_reason.empty()) {
+        std::cout << "  stop=" << node.stop_reason;
+    }
+
+    std::cout << "\n";
+
+    if (!node.from_ranges.empty()) {
+        for (const auto &range : node.from_ranges) {
+            std::cout << indent << "  from=" << format_range(range) << "\n";
+        }
+    }
+
+    for (const auto &child : node.children) {
+        print_expanded_node(child, depth + 1);
+    }
+}
+
+
+void print_expanded_snippets(const std::vector<ExpandedSnippet> &snippets) 
+{
+    for (const auto &snippet : snippets) {
+        std::cout << "---- "
+                  << snippet.item.path.filename().string()
+                  << " :: "
+                  << snippet.item.name
+                  << "  stop="
+                  << (snippet.stop_reason.empty() ? "<none>" : snippet.stop_reason)
+                  << "  ["
+                  << snippet.window.start_line
+                  << "-"
+                  << snippet.window.end_line
+                  << "]\n";
+        std::cout << snippet.window.text << "\n\n";
+    }
+}
+
+
+void print_expansion_result(const std::string &label,
+                            const ExpansionResult &result) 
+{
+    // print_section(label + " retry");
+    // std::cout << "attempts=" << result.attempts << "\n";
+
+    print_section(label + " anchor method");
+    std::cout << "name=" << result.anchor_symbol.name
+              << " logical=" << logical_name(result.anchor_symbol.name)
+              << " range=" << format_range(result.anchor_symbol.range)
+              << " selection=" << format_range(result.anchor_symbol.selection_range)
+              << "\n";
+
+    print_section(label + " call hierarchy anchor");
+    print_call_hierarchy_items(std::cout,
+                               std::vector<CallHierarchyItem>{result.anchor_item});
+
+    print_section(label + " expanded dependency tree");
+    print_expanded_node(result.root);
+
+    print_section(label + " fetched code snippets");
+    const std::vector<ExpandedSnippet> snippets =
+        collect_unique_snippets(result.root);
+    print_expanded_snippets(snippets);
+}
+
 
 
 }  // namespace clspc

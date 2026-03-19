@@ -2,7 +2,7 @@
 #pragma once
 
 #include "clspc/lsp_types.h"
-
+#include "clspc/semantic.h"
 #include <iosfwd>
 #include <string>
 #include <string_view>
@@ -28,5 +28,14 @@ void print_locations(std::ostream &os,
 
 void print_incoming_calls(std::ostream &os,
                           const std::vector<IncomingCall> &calls);
+
+void print_section(const std::string &title);
+
+void print_expanded_node(const ExpandedNode &node, int depth = 0);
+
+void print_expanded_snippets(const std::vector<ExpandedSnippet> &snippets);
+
+void print_expansion_result(const std::string &label,
+                            const ExpansionResult &result);
 
 }  // namespace clspc

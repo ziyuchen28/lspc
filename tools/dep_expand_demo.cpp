@@ -248,11 +248,6 @@ GraphNode expand_outgoing(Session &session,
 }
 
 
-void print_section(const std::string &title) {
-    std::cout << "\n=== " << title << " ===\n";
-}
-
-
 void print_graph_node(const GraphNode &node, int depth = 0) 
 {
     const std::string indent(static_cast<std::size_t>(depth * 2), ' ');

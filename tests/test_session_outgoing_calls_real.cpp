@@ -81,11 +81,6 @@ const OutgoingCall *find_outgoing_call(const std::vector<OutgoingCall> &calls,
 }
 
 
-void print_section(const std::string &title) 
-{
-    std::cout << "\n=== " << title << " ===\n";
-}
-
 
 }  // namespace
 

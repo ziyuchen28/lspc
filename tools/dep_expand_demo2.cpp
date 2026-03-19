@@ -17,13 +17,17 @@ using namespace clspc;
 
 namespace {
 
-enum class Direction {
+
+enum class Direction 
+{
     Outgoing,
     Incoming,
     Both,
 };
 
-struct Args {
+
+struct Args 
+{
     fs::path jdtls_home;
     fs::path root;
     fs::path workspace;
@@ -35,17 +39,21 @@ struct Args {
     bool show_help{false};
 };
 
-[[noreturn]] void fail(const std::string &msg) {
+
+[[noreturn]] void fail(const std::string &msg) 
+{
     throw std::runtime_error(msg);
 }
 
-void require(bool condition, const std::string &message) {
+void require(bool condition, const std::string &message) 
+{
     if (!condition) {
         fail(message);
     }
 }
 
-std::string next_arg(int &i, int argc, char **argv, const std::string &flag) {
+std::string next_arg(int &i, int argc, char **argv, const std::string &flag) 
+{
     if (i + 1 >= argc) {
         fail("missing value after " + flag);
     }
@@ -53,7 +61,8 @@ std::string next_arg(int &i, int argc, char **argv, const std::string &flag) {
     return argv[i];
 }
 
-Direction parse_direction(const std::string &value) {
+Direction parse_direction(const std::string &value) 
+{
     if (value == "outgoing") {
         return Direction::Outgoing;
     }
@@ -66,7 +75,8 @@ Direction parse_direction(const std::string &value) {
     fail("unknown direction: " + value);
 }
 
-Args parse_args(int argc, char **argv) {
+Args parse_args(int argc, char **argv) 
+{
     Args args;
 
     for (int i = 1; i < argc; ++i) {
@@ -107,7 +117,8 @@ Args parse_args(int argc, char **argv) {
     return args;
 }
 
-void print_help() {
+void print_help() 
+{
     std::cout
         << "dep_expand_demo\n\n"
         << "Required:\n"
@@ -122,7 +133,8 @@ void print_help() {
         << "  --direction MODE   outgoing|incoming|both (default: outgoing)\n";
 }
 
-std::optional<std::string> timeout_bin_from_env() {
+std::optional<std::string> timeout_bin_from_env() 
+{
     if (const char *env = std::getenv("CLSPC_TIMEOUT_BIN")) {
         if (*env != '\0') {
             return std::string(env);
@@ -131,7 +143,8 @@ std::optional<std::string> timeout_bin_from_env() {
     return std::nullopt;
 }
 
-std::string shell_quote_single(std::string_view s) {
+std::string shell_quote_single(std::string_view s) 
+{
     std::string out;
     out.push_back('\'');
     for (char ch : s) {
@@ -145,82 +158,11 @@ std::string shell_quote_single(std::string_view s) {
     return out;
 }
 
-void print_section(const std::string &title) {
-    std::cout << "\n=== " << title << " ===\n";
-}
-
-void print_expanded_node(const ExpandedNode &node, int depth = 0) {
-    const std::string indent(static_cast<std::size_t>(depth * 2), ' ');
-
-    std::cout << indent
-              << "- " << node.item.name
-              << "  logical=" << logical_name(node.item.name)
-              << "  kind=" << symbol_kind_name(node.item.kind)
-              << "  file=" << (node.item.path.empty() ? "<none>" : node.item.path.filename().string())
-              << "  range=" << format_range(node.item.range);
-
-    if (!node.stop_reason.empty()) {
-        std::cout << "  stop=" << node.stop_reason;
-    }
-
-    std::cout << "\n";
-
-    if (!node.from_ranges.empty()) {
-        for (const auto &range : node.from_ranges) {
-            std::cout << indent << "  from=" << format_range(range) << "\n";
-        }
-    }
-
-    for (const auto &child : node.children) {
-        print_expanded_node(child, depth + 1);
-    }
-}
-
-void print_expanded_snippets(const std::vector<ExpandedSnippet> &snippets) {
-    for (const auto &snippet : snippets) {
-        std::cout << "---- "
-                  << snippet.item.path.filename().string()
-                  << " :: "
-                  << snippet.item.name
-                  << "  stop="
-                  << (snippet.stop_reason.empty() ? "<none>" : snippet.stop_reason)
-                  << "  ["
-                  << snippet.window.start_line
-                  << "-"
-                  << snippet.window.end_line
-                  << "]\n";
-        std::cout << snippet.window.text << "\n\n";
-    }
-}
-
-void print_expansion_result(const std::string &label,
-                            const ExpansionResult &result) {
-    print_section(label + " retry");
-    std::cout << "attempts=" << result.attempts << "\n";
-
-    print_section(label + " anchor method");
-    std::cout << "name=" << result.anchor_symbol.name
-              << " logical=" << logical_name(result.anchor_symbol.name)
-              << " range=" << format_range(result.anchor_symbol.range)
-              << " selection=" << format_range(result.anchor_symbol.selection_range)
-              << "\n";
-
-    print_section(label + " call hierarchy anchor");
-    print_call_hierarchy_items(std::cout,
-                               std::vector<CallHierarchyItem>{result.anchor_item});
-
-    print_section(label + " expanded dependency tree");
-    print_expanded_node(result.root);
-
-    print_section(label + " fetched code snippets");
-    const std::vector<ExpandedSnippet> snippets =
-        collect_unique_snippets(result.root);
-    print_expanded_snippets(snippets);
-}
 
 }  // namespace
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv) 
+{
     try {
         const Args args = parse_args(argc, argv);
         if (args.show_help) {
