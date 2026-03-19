@@ -9,6 +9,13 @@
 namespace clspc {
 
 
+static void emit_trace(const ExpandOptions &options, ExpandTraceEvent event) 
+{
+    if (options.trace) {
+        options.trace(event);
+    }
+}
+
 
 static bool is_under_root(const std::filesystem::path &path,
                           const std::filesystem::path &root) 
@@ -108,11 +115,21 @@ static AnchorResolution resolve_anchor(Session &session,
 
     while (std::chrono::steady_clock::now() < deadline) {
         ++result.attempts;
+        emit_trace(options, ExpandTraceEvent{
+            .kind = ExpandTraceKind::AnchorResolveAttempt,
+            .attempt = result.attempts,
+            .message = "resolving anchor",
+        });
         try {
             symbols = session.document_symbols(anchor_file);
             // find the range
             method = find_method_symbol(symbols, method_name);
             if (method.has_value()) {
+                emit_trace(options, ExpandTraceEvent{
+                    .kind = ExpandTraceKind::AnchorSymbolFound,
+                    .attempt = result.attempts,
+                    .message = "anchor symbol found via documentSymbol",
+                });
                 items = session.prepare_call_hierarchy(anchor_file,
                                                        method->selection_range.start);
                 for (const auto &item : items) {
@@ -152,11 +169,24 @@ static ExpandedNode expand_outgoing_node(Session &session,
 {
     ExpandedNode node;
     node.item = item;
+    emit_trace(options, ExpandTraceEvent{
+        .kind = ExpandTraceKind::EnterNode,
+        .depth = depth,
+        .item = item,
+        .message = "enter outgoing node",
+    });
     node.snippet = make_snippet_for_item(item, options);
 
     const std::string key = node_key(item);
     if (!visited.insert(key).second) {
         node.stop_reason = "already-visited";
+        emit_trace(options, ExpandTraceEvent{
+            .kind = ExpandTraceKind::StopNode,
+            .depth = depth,
+            .item = item,
+            .message = "stop outgoing node",
+            .stop_reason = node.stop_reason,
+        });
         return node;
     }
     if (depth >= options.max_depth) {
@@ -172,6 +202,13 @@ static ExpandedNode expand_outgoing_node(Session &session,
         return node;
     }
     const std::vector<OutgoingCall> outgoing = session.outgoing_calls(item);
+    emit_trace(options, ExpandTraceEvent{
+        .kind = ExpandTraceKind::ExpandOutgoing,
+        .depth = depth,
+        .item = item,
+        .edge_count = outgoing.size(),
+        .message = "fetched outgoing edges",
+    });
     if (outgoing.empty()) {
         node.stop_reason = "leaf";
         return node;
@@ -295,9 +332,20 @@ static std::vector<IncomingCall> wait_for_initial_incoming(Session &session,
 {
     const auto deadline = std::chrono::steady_clock::now() + options.ready_timeout;
     while (std::chrono::steady_clock::now() < deadline) {
+        emit_trace(options, ExpandTraceEvent{
+            .kind = ExpandTraceKind::RootEdgeRetryAttempt,
+            .attempt = attempts_out,
+            .message = "probing initial incoming edges",
+        });
         ++attempts_out;
         try {
             const std::vector<IncomingCall> incoming = session.incoming_calls(item);
+            emit_trace(options, ExpandTraceEvent{
+                .kind = ExpandTraceKind::RootEdgeRetryResult,
+                .attempt = attempts_out,
+                .edge_count = incoming.size(),
+                .message = "initial incoming edge probe result",
+            });
             if (!incoming.empty()) {
                 return incoming;
             }

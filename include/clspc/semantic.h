@@ -10,8 +10,37 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <functional>
 
 namespace clspc {
+
+
+enum class ExpandTraceKind 
+{
+    AnchorResolveAttempt,
+    AnchorSymbolFound,
+    AnchorCallHierarchyReady,
+    RootEdgeRetryAttempt,
+    RootEdgeRetryResult,
+    EnterNode,
+    StopNode,
+    ExpandOutgoing,
+    ExpandIncoming,
+};
+
+struct ExpandTraceEvent 
+{
+    ExpandTraceKind kind{};
+    int depth{0};
+    std::size_t attempt{0};
+    std::optional<CallHierarchyItem> item;
+    std::size_t edge_count{0};
+    std::string message;
+    std::string stop_reason;
+
+};
+
+using ExpandTraceSink = std::function<void(const ExpandTraceEvent &)>;
 
 
 struct ExpandOptions 
@@ -24,6 +53,8 @@ struct ExpandOptions
 
     std::size_t snippet_padding_before{1};
     std::size_t snippet_padding_after{1};
+
+    ExpandTraceSink trace;
 };
 
 

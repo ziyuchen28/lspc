@@ -213,6 +213,7 @@ int main(int argc, char **argv)
         options.client_name = "clspc-demo";
         options.client_version = "0.1";
 
+
         Session session(std::move(child), options);
 
         print_section("initialize");
@@ -230,6 +231,47 @@ int main(int argc, char **argv)
         expand_options.max_depth = args.max_depth;
         expand_options.snippet_padding_before = 1;
         expand_options.snippet_padding_after = 1;
+
+        expand_options.trace = [](const ExpandTraceEvent &ev) {
+            auto kind_name = [](ExpandTraceKind kind) -> const char * {
+                switch (kind) {
+                    case ExpandTraceKind::AnchorResolveAttempt: return "anchor-resolve-attempt";
+                    case ExpandTraceKind::AnchorSymbolFound: return "anchor-symbol-found";
+                    case ExpandTraceKind::AnchorCallHierarchyReady: return "anchor-callhierarchy-ready";
+                    case ExpandTraceKind::RootEdgeRetryAttempt: return "root-edge-retry-attempt";
+                    case ExpandTraceKind::RootEdgeRetryResult: return "root-edge-retry-result";
+                    case ExpandTraceKind::EnterNode: return "enter-node";
+                    case ExpandTraceKind::StopNode: return "stop-node";
+                    case ExpandTraceKind::ExpandOutgoing: return "expand-outgoing";
+                    case ExpandTraceKind::ExpandIncoming: return "expand-incoming";
+                }
+                return "unknown";
+            };
+
+            std::cerr << "[trace] kind=" << kind_name(ev.kind)
+                      << " depth=" << ev.depth
+                      << " attempt=" << ev.attempt
+                      << " edge_count=" << ev.edge_count;
+
+            if (ev.item.has_value()) {
+                std::cerr << " item=" << ev.item->name
+                          << " file=" << (ev.item->path.empty() ? "<none>" : ev.item->path.filename().string());
+            }
+
+            if (!ev.stop_reason.empty()) {
+                std::cerr << " stop=" << ev.stop_reason;
+            }
+
+            if (!ev.message.empty()) {
+                std::cerr << " msg=" << ev.message;
+            }
+
+            std::cerr << "\n";
+            std::cerr.flush();
+        };
+
+
+
 
         if (args.direction == Direction::Outgoing ||
             args.direction == Direction::Both) {
