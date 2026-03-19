@@ -235,6 +235,12 @@ void print_expansion_result(const std::string &label,
     // print_section(label + " retry");
     // std::cout << "attempts=" << result.attempts << "\n";
 
+    if (result.initial_edge_probe_attempts > 0 || result.initial_edge_count > 0) {
+        print_section(label + " root edge probe");
+        std::cout << "probe_attempts=" << result.initial_edge_probe_attempts << "\n";
+        std::cout << "edge_count=" << result.initial_edge_count << "\n";
+    }
+
     print_section(label + " anchor method");
     std::cout << "name=" << result.anchor_symbol.name
               << " logical=" << logical_name(result.anchor_symbol.name)

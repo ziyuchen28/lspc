@@ -92,9 +92,9 @@ std::optional<DocumentSymbol> find_method_symbol(const std::vector<DocumentSymbo
 
 
 static AnchorResolution resolve_anchor(Session &session,
-                                const std::filesystem::path &file,
-                                std::string_view method_name,
-                                const ExpandOptions &options) 
+                                       const std::filesystem::path &file,
+                                       std::string_view method_name,
+                                       const ExpandOptions &options) 
 {
     AnchorResolution result;
 
@@ -145,10 +145,10 @@ static AnchorResolution resolve_anchor(Session &session,
 
 
 static ExpandedNode expand_outgoing_node(Session &session,
-                                  const CallHierarchyItem &item,
-                                  const ExpandOptions &options,
-                                  int depth,
-                                  std::unordered_set<std::string> &visited) 
+                                         const CallHierarchyItem &item,
+                                         const ExpandOptions &options,
+                                         int depth,
+                                         std::unordered_set<std::string> &visited) 
 {
     ExpandedNode node;
     node.item = item;
@@ -189,11 +189,14 @@ static ExpandedNode expand_outgoing_node(Session &session,
 }
 
 
-static ExpandedNode expand_incoming_node(Session &session,
-                                  const CallHierarchyItem &item,
-                                  const ExpandOptions &options,
-                                  int depth,
-                                  std::unordered_set<std::string> &visited) {
+static ExpandedNode expand_incoming_node(
+        Session &session,
+        const CallHierarchyItem &item,
+        const ExpandOptions &options,
+        int depth,
+        std::unordered_set<std::string> &visited,
+        const std::optional<std::vector<IncomingCall>> &prefetched_incoming = std::nullopt) 
+{
     ExpandedNode node;
     node.item = item;
     node.snippet = make_snippet_for_item(item, options);
@@ -219,7 +222,9 @@ static ExpandedNode expand_incoming_node(Session &session,
         return node;
     }
 
-    const std::vector<IncomingCall> incoming = session.incoming_calls(item);
+    const std::vector<IncomingCall> incoming =
+        prefetched_incoming.has_value() ? *prefetched_incoming : session.incoming_calls(item);
+
     if (incoming.empty()) {
         node.stop_reason = "leaf";
         return node;
@@ -241,8 +246,8 @@ static ExpandedNode expand_incoming_node(Session &session,
 
 // dedupe: call hierarchy could have overlapped nodes
 static void collect_unique_snippets_recursive(const ExpandedNode &node,
-                                       std::unordered_set<std::string> &seen,
-                                       std::vector<ExpandedSnippet> &out) 
+                                              std::unordered_set<std::string> &seen,
+                                              std::vector<ExpandedSnippet> &out) 
 {
     if (node.snippet.has_value()) {
         const std::string key = snippet_key(node);
@@ -283,6 +288,27 @@ ExpansionResult expand_outgoing_from_method(Session &session,
 }
 
 
+static std::vector<IncomingCall> wait_for_initial_incoming(Session &session,
+                                                    const CallHierarchyItem &item,
+                                                    const ExpandOptions &options,
+                                                    std::size_t &attempts_out) 
+{
+    const auto deadline = std::chrono::steady_clock::now() + options.ready_timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        ++attempts_out;
+        try {
+            const std::vector<IncomingCall> incoming = session.incoming_calls(item);
+            if (!incoming.empty()) {
+                return incoming;
+            }
+        } catch (...) {
+        }
+        std::this_thread::sleep_for(options.retry_interval);
+    }
+    return {};
+}
+
+
 ExpansionResult expand_incoming_to_method(Session &session,
                                           const std::filesystem::path &file,
                                           std::string_view method_name,
@@ -296,6 +322,17 @@ ExpansionResult expand_incoming_to_method(Session &session,
     result.anchor_symbol = anchor.symbol;
     result.anchor_item = anchor.item;
     result.attempts = anchor.attempts;
+
+    // only retry the inital edges to ensure lsp readiness
+    // lower layers are traversed normally
+    const std::vector<IncomingCall> initial_incoming =
+        wait_for_initial_incoming(session,
+                                  result.anchor_item,
+                                  options,
+                                  result.initial_edge_probe_attempts);
+
+    result.initial_edge_count = initial_incoming.size();
+
     std::unordered_set<std::string> visited;
     result.root = expand_incoming_node(session,
                                        result.anchor_item,

@@ -268,6 +268,12 @@ while True:
     require(result.attempts >= 1,
             "expected at least one attempt");
 
+    // probing
+    require(result.initial_edge_probe_attempts >= 1,
+            "expected at least one incoming root probe");
+    require(result.initial_edge_count == 1,
+            "expected one incoming root edge");
+
     require(logical_name(result.root.item.name) == "leaf",
             "unexpected root node");
     require(result.root.children.size() == 1,

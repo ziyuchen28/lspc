@@ -45,6 +45,9 @@ struct ExpansionResult
     CallHierarchyItem anchor_item;
     ExpandedNode root;
     std::size_t attempts{0};
+    // debug
+    std::size_t initial_edge_probe_attempts{0};
+    std::size_t initial_edge_count{0};
 };
 
 
