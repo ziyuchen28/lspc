@@ -6,6 +6,7 @@
 #include <utility>
 #include <fstream>
 #include <sstream>
+#include <iostream>
 #include <stdexcept>
 #include <unistd.h>
 
@@ -26,6 +27,26 @@ namespace clspc {
 namespace {
 
 using nlohmann::json;
+
+
+void trace_line(bool enabled, const std::string &line) 
+{
+    if (!enabled) {
+        return;
+    }
+    std::cerr << line << "\n";
+    std::cerr.flush();
+}
+
+
+std::string summarize_json_for_log(const std::string &text) 
+{
+    constexpr std::size_t k_max = 256;
+    if (text.size() <= k_max) {
+        return text;
+    }
+    return text.substr(0, k_max) + "...";
+}
 
 
 bool has_provider(const json &caps, const char *key) 
@@ -371,26 +392,124 @@ struct Session::Impl
 Session::Session(pcr::proc::PipedChild child, SessionOptions options)
     : impl_(std::make_unique<Impl>(std::move(child), std::move(options))) 
 {
-    // optional handler
-    impl_->rpc.on_notification("window/logMessage", [](const pcr::rpc::Notification&) {});
-    impl_->rpc.on_notification("window/showMessage", [](const pcr::rpc::Notification&) {});
-    impl_->rpc.on_notification("$/progress", [](const pcr::rpc::Notification&) {});
-    impl_->rpc.on_notification("telemetry/event", [](const pcr::rpc::Notification&) {});
 
-    impl_->rpc.on_request("window/workDoneProgress/create", [](const pcr::rpc::Request&) {
+    impl_->rpc.on_notification("window/logMessage", [this](const pcr::rpc::Notification &notif) {
+        if (!impl_->options.trace_lsp_messages) {
+            return;
+        }
+        std::string line = "[lsp notify] window/logMessage";
+        if (notif.params_json) {
+            try {
+                const auto params = nlohmann::json::parse(*notif.params_json);
+                if (params.is_object()) {
+                    const int type = params.value("type", 0);
+                    const std::string message = params.value("message", "");
+                    line += " type=" + std::to_string(type) + " msg=" + message;
+                } else {
+                    line += " params=" + summarize_json_for_log(params.dump());
+                }
+            } catch (...) {
+                line += " params=<parse-failed>";
+            }
+        }
+
+        trace_line(true, line);
+    });
+
+    impl_->rpc.on_notification("window/showMessage", [this](const pcr::rpc::Notification &notif) {
+        if (!impl_->options.trace_lsp_messages) {
+            return;
+        }
+
+        std::string line = "[lsp notify] window/showMessage";
+        if (notif.params_json) {
+            try {
+                const auto params = nlohmann::json::parse(*notif.params_json);
+                line += " params=" + summarize_json_for_log(params.dump());
+            } catch (...) {
+                line += " params=<parse-failed>";
+            }
+        }
+        trace_line(true, line);
+    });
+
+    impl_->rpc.on_notification("$/progress", [this](const pcr::rpc::Notification &notif) {
+        if (!impl_->options.trace_lsp_messages) {
+            return;
+        }
+        std::string line = "[lsp notify] $/progress";
+        if (notif.params_json) {
+            try {
+                const auto params = nlohmann::json::parse(*notif.params_json);
+                line += " params=" + summarize_json_for_log(params.dump());
+            } catch (...) {
+                line += " params=<parse-failed>";
+            }
+        }
+        trace_line(true, line);
+    });
+
+    impl_->rpc.on_notification("telemetry/event", [this](const pcr::rpc::Notification &notif) {
+        if (!impl_->options.trace_lsp_messages) {
+            return;
+        }
+        std::string line = "[lsp notify] telemetry/event";
+        if (notif.params_json) {
+            try {
+                const auto params = nlohmann::json::parse(*notif.params_json);
+                line += " params=" + summarize_json_for_log(params.dump());
+            } catch (...) {
+                line += " params=<parse-failed>";
+            }
+        }
+        trace_line(true, line);
+    });
+
+    impl_->rpc.on_request("window/workDoneProgress/create", [this](const pcr::rpc::Request &req) {
+        if (impl_->options.trace_lsp_messages) {
+            std::string line = "[lsp request] window/workDoneProgress/create";
+            if (req.params_json) {
+                line += " params=" + summarize_json_for_log(*req.params_json);
+            }
+            trace_line(true, line);
+        }
         return pcr::rpc::HandlerResult::ok("null");
     });
 
-    impl_->rpc.on_request("client/registerCapability", [](const pcr::rpc::Request&) {
+    impl_->rpc.on_request("client/registerCapability", [this](const pcr::rpc::Request &req) {
+        if (impl_->options.trace_lsp_messages) {
+            std::string line = "[lsp request] client/registerCapability";
+            if (req.params_json) {
+                line += " params=" + summarize_json_for_log(*req.params_json);
+            }
+            trace_line(true, line);
+        }
+
         return pcr::rpc::HandlerResult::ok("null");
     });
 
-    impl_->rpc.on_request("client/unregisterCapability", [](const pcr::rpc::Request&) {
+    impl_->rpc.on_request("client/unregisterCapability", [this](const pcr::rpc::Request &req) {
+        if (impl_->options.trace_lsp_messages) {
+            std::string line = "[lsp request] client/unregisterCapability";
+            if (req.params_json) {
+                line += " params=" + summarize_json_for_log(*req.params_json);
+            }
+            trace_line(true, line);
+        }
+
         return pcr::rpc::HandlerResult::ok("null");
     });
 
-    impl_->rpc.on_request("workspace/workspaceFolders", [this](const pcr::rpc::Request&) {
-        json folders = json::array({
+    impl_->rpc.on_request("workspace/workspaceFolders", [this](const pcr::rpc::Request &req) {
+        if (impl_->options.trace_lsp_messages) {
+            std::string line = "[lsp request] workspace/workspaceFolders";
+            if (req.params_json) {
+                line += " params=" + summarize_json_for_log(*req.params_json);
+            }
+            trace_line(true, line);
+        }
+
+        nlohmann::json folders = nlohmann::json::array({
             {
                 {"uri", file_uri_from_path(impl_->options.root_dir)},
                 {"name", impl_->options.root_dir.filename().string()},
@@ -399,32 +518,100 @@ Session::Session(pcr::proc::PipedChild child, SessionOptions options)
         return pcr::rpc::HandlerResult::ok(folders.dump());
     });
 
-    impl_->rpc.on_request("workspace/configuration", [](const pcr::rpc::Request &req) {
-        json result = json::array();
+    impl_->rpc.on_request("workspace/configuration", [this](const pcr::rpc::Request &req) {
+        if (impl_->options.trace_lsp_messages) {
+            std::string line = "[lsp request] workspace/configuration";
+            if (req.params_json) {
+                line += " params=" + summarize_json_for_log(*req.params_json);
+            }
+            trace_line(true, line);
+        }
+
+        nlohmann::json result = nlohmann::json::array();
+
         try {
             if (!req.params_json) {
                 return pcr::rpc::HandlerResult::ok(result.dump());
             }
 
-            const auto params = json::parse(*req.params_json);
+            const auto params = nlohmann::json::parse(*req.params_json);
             if (params.contains("items") && params.at("items").is_array()) {
-                // no need to handle for now so returning null just for satisfying protocol
-                for (const auto &_ : params.at("items")) {
-                    (void)_;
+                for (const auto &item : params.at("items")) {
+                    (void)item;
                     result.push_back(nullptr);
                 }
             }
         } catch (...) {
             // best effort
         }
+
         return pcr::rpc::HandlerResult::ok(result.dump());
     });
 }
 
-
 Session::Session(Session&&) noexcept = default;
 Session &Session::operator=(Session&&) noexcept = default;
 Session::~Session() = default;
+
+
+// wrap request in timing measures
+// returns raw response in raw json
+std::string Session::request_json_raw(std::string_view method,
+                                      std::string params_json,
+                                      const char *error_prefix) 
+{
+    const auto t0 = std::chrono::steady_clock::now();
+
+    trace_line(impl_->options.trace_request_timing,
+               "[session] -> " + std::string(method) +
+               " params=" + summarize_json_for_log(params_json));
+
+    const pcr::rpc::Id id =
+        impl_->rpc.send_request(std::string(method), params_json);
+
+    for (;;) {
+        if (auto response = impl_->rpc.take_response(id); response.has_value()) {
+            const auto elapsed_ms =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - t0).count();
+
+            if (response->error) {
+                trace_line(impl_->options.trace_request_timing,
+                           "[session] <- " + std::string(method) +
+                           " error after " + std::to_string(elapsed_ms) +
+                           "ms msg=" + response->error->message);
+
+                throw std::runtime_error(std::string(error_prefix) + ": " +
+                                         response->error->message);
+            }
+
+            const std::string result_text =
+                response->result_json ? *response->result_json : "null";
+
+            trace_line(impl_->options.trace_request_timing,
+                       "[session] <- " + std::string(method) +
+                       " ok after " + std::to_string(elapsed_ms) +
+                       "ms result=" + summarize_json_for_log(result_text));
+
+            return result_text;
+        }
+
+        if (!impl_->rpc.pump_once()) {
+            const auto elapsed_ms =
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - t0).count();
+
+            trace_line(impl_->options.trace_request_timing,
+                       "[session] <- " + std::string(method) +
+                       " EOF after " + std::to_string(elapsed_ms) + "ms");
+
+            throw std::runtime_error(std::string(error_prefix) +
+                                     ": LSP EOF while waiting for " +
+                                     std::string(method) + " response");
+        }
+    }
+}
+
 
 
 InitializeResult Session::initialize() 
@@ -453,40 +640,29 @@ InitializeResult Session::initialize()
     });
     params["trace"] = "off";
 
-    const pcr::rpc::Id id = impl_->rpc.send_request("initialize", params.dump());
+    const std::string result_text =
+        request_json_raw("initialize", params.dump(), "initialize failed");
 
-    for (;;) {
-        if (auto response = impl_->rpc.take_response(id); response.has_value()) {
-            if (response->error) {
-                throw std::runtime_error("initialize failed: " + response->error->message);
-            }
+    const auto result_json = nlohmann::json::parse(result_text);
 
-            const auto result_json =
-                response->result_json ? json::parse(*response->result_json) : json(nullptr);
+    InitializeResult result;
 
-            InitializeResult result;
-
-            if (result_json.contains("serverInfo") && result_json.at("serverInfo").is_object()) {
-                result.server_name = result_json.at("serverInfo").value("name", "");
-                result.server_version = result_json.at("serverInfo").value("version", "");
-            }
-
-            const json capabilities = result_json.value("capabilities", json::object());
-            result.has_definition_provider = has_provider(capabilities, "definitionProvider");
-            result.has_implementation_provider = has_provider(capabilities, "implementationProvider");
-            result.has_references_provider = has_provider(capabilities, "referencesProvider");
-            result.has_hover_provider = has_provider(capabilities, "hoverProvider");
-            result.has_document_symbol_provider = has_provider(capabilities, "documentSymbolProvider");
-            result.has_call_hierarchy_provider = has_provider(capabilities, "callHierarchyProvider");
-
-            return result;
-        }
-
-        if (!impl_->rpc.pump_once()) {
-            throw std::runtime_error("LSP EOF while waiting for initialize response");
-        }
+    if (result_json.contains("serverInfo") && result_json.at("serverInfo").is_object()) {
+        result.server_name = result_json.at("serverInfo").value("name", "");
+        result.server_version = result_json.at("serverInfo").value("version", "");
     }
+
+    const nlohmann::json capabilities = result_json.value("capabilities", nlohmann::json::object());
+    result.has_definition_provider = has_provider(capabilities, "definitionProvider");
+    result.has_implementation_provider = has_provider(capabilities, "implementationProvider");
+    result.has_references_provider = has_provider(capabilities, "referencesProvider");
+    result.has_hover_provider = has_provider(capabilities, "hoverProvider");
+    result.has_document_symbol_provider = has_provider(capabilities, "documentSymbolProvider");
+    result.has_call_hierarchy_provider = has_provider(capabilities, "callHierarchyProvider");
+
+    return result;
 }
+
 
 // three-way handshake
 void Session::initialized() 
@@ -497,17 +673,17 @@ void Session::initialized()
 
 void Session::shutdown_and_exit() 
 {
-    const pcr::rpc::Id id = impl_->rpc.send_request("shutdown", "null");
 
-    for (;;) {
-        if (auto response = impl_->rpc.take_response(id); response.has_value()) {
-            break;
-        }
-        if (!impl_->rpc.pump_once()) {
-            break;
-        }
+    // best effort during teardown
+    try {
+        (void)request_json_raw("shutdown", "null", "shutdown failed");
+    } catch (const std::exception &ex) {
+        trace_line(impl_->options.trace_request_timing,
+                   std::string("[session] shutdown best-effort ignore: ") + ex.what());
+    } catch (...) {
+        trace_line(impl_->options.trace_request_timing,
+                   "[session] shutdown best-effort ignore: unknown exception");
     }
-
     impl_->rpc.send_notification("exit", "null");
     impl_->child.close_stdin_write();
 }
@@ -623,25 +799,13 @@ std::vector<DocumentSymbol> Session::document_symbols(const std::filesystem::pat
         }}
     };
 
-    const pcr::rpc::Id id =
-        impl_->rpc.send_request("textDocument/documentSymbol", params.dump());
+    const std::string result_text =
+        request_json_raw("textDocument/documentSymbol",
+                         params.dump(),
+                         "documentSymbol failed");
 
-    for (;;) {
-        if (auto response = impl_->rpc.take_response(id); response.has_value()) {
-            if (response->error) {
-                throw std::runtime_error("documentSymbol failed: " +
-                                         response->error->message);
-            }
-            const auto result_json =
-                response->result_json ? json::parse(*response->result_json)
-                                      : json(nullptr);
-            return parse_document_symbols(result_json);
-        }
-
-        if (!impl_->rpc.pump_once()) {
-            throw std::runtime_error("LSP EOF while waiting for documentSymbol response");
-        }
-    }
+    const auto result_json = nlohmann::json::parse(result_text);
+    return parse_document_symbols(result_json);
 }
 
 
@@ -657,25 +821,13 @@ std::vector<Location> Session::definition(const std::filesystem::path &path, Pos
         {"position", json_position(pos)},
     };
 
-    const pcr::rpc::Id id =
-        impl_->rpc.send_request("textDocument/definition", params.dump());
+    const std::string result_text =
+        request_json_raw("textDocument/definition",
+                         params.dump(),
+                         "definition failed");
 
-    for (;;) {
-        if (auto response = impl_->rpc.take_response(id); response.has_value()) {
-            if (response->error) {
-                throw std::runtime_error("definition failed: " +
-                                         response->error->message);
-            }
-            const auto result_json =
-                response->result_json ? json::parse(*response->result_json)
-                                      : json(nullptr);
-            return parse_locations(result_json);
-        }
-
-        if (!impl_->rpc.pump_once()) {
-            throw std::runtime_error("LSP EOF while waiting for definition response");
-        }
-    }
+    const auto result_json = nlohmann::json::parse(result_text);
+    return parse_locations(result_json);
 }
 
 
@@ -691,27 +843,13 @@ std::vector<Location> Session::implementation(const std::filesystem::path &path,
         {"position", json_position(pos)},
     };
 
-    const pcr::rpc::Id id =
-        impl_->rpc.send_request("textDocument/implementation", params.dump());
+    const std::string result_text =
+        request_json_raw("textDocument/implementation",
+                         params.dump(),
+                         "implementation failed");
 
-    for (;;) {
-        if (auto response = impl_->rpc.take_response(id); response.has_value()) {
-            if (response->error) {
-                throw std::runtime_error("implementation failed: " +
-                                         response->error->message);
-            }
-
-            const auto result_json =
-                response->result_json ? json::parse(*response->result_json)
-                                      : json(nullptr);
-
-            return parse_locations(result_json);
-        }
-
-        if (!impl_->rpc.pump_once()) {
-            throw std::runtime_error("LSP EOF while waiting for implementation response");
-        }
-    }
+    const auto result_json = nlohmann::json::parse(result_text);
+    return parse_locations(result_json);
 }
 
 
@@ -732,27 +870,13 @@ std::vector<Location> Session::references(const std::filesystem::path &path,
         }},
     };
 
-    const pcr::rpc::Id id =
-        impl_->rpc.send_request("textDocument/references", params.dump());
+    const std::string result_text =
+        request_json_raw("textDocument/references",
+                         params.dump(),
+                         "references failed");
 
-    for (;;) {
-        if (auto response = impl_->rpc.take_response(id); response.has_value()) {
-            if (response->error) {
-                throw std::runtime_error("references failed: " +
-                                         response->error->message);
-            }
-
-            const auto result_json =
-                response->result_json ? json::parse(*response->result_json)
-                                      : json(nullptr);
-
-            return parse_locations(result_json);
-        }
-
-        if (!impl_->rpc.pump_once()) {
-            throw std::runtime_error("LSP EOF while waiting for references response");
-        }
-    }
+    const auto result_json = nlohmann::json::parse(result_text);
+    return parse_locations(result_json);
 }
 
 
@@ -769,27 +893,13 @@ std::vector<CallHierarchyItem> Session::prepare_call_hierarchy(const std::filesy
         {"position", json_position(pos)},
     };
 
-    const pcr::rpc::Id id =
-        impl_->rpc.send_request("textDocument/prepareCallHierarchy", params.dump());
+    const std::string result_text =
+        request_json_raw("textDocument/prepareCallHierarchy",
+                         params.dump(),
+                         "prepareCallHierarchy failed");
 
-    for (;;) {
-        if (auto response = impl_->rpc.take_response(id); response.has_value()) {
-            if (response->error) {
-                throw std::runtime_error("prepareCallHierarchy failed: " +
-                                         response->error->message);
-            }
-
-            const auto result_json =
-                response->result_json ? json::parse(*response->result_json)
-                                      : json(nullptr);
-
-            return parse_call_hierarchy_items(result_json);
-        }
-
-        if (!impl_->rpc.pump_once()) {
-            throw std::runtime_error("LSP EOF while waiting for prepareCallHierarchy response");
-        }
-    }
+    const auto result_json = nlohmann::json::parse(result_text);
+    return parse_call_hierarchy_items(result_json);
 }
 
 
@@ -799,27 +909,13 @@ std::vector<OutgoingCall> Session::outgoing_calls(const CallHierarchyItem &item)
         {"item", json_call_hierarchy_item(item)},
     };
 
-    const pcr::rpc::Id id =
-        impl_->rpc.send_request("callHierarchy/outgoingCalls", params.dump());
+    const std::string result_text =
+        request_json_raw("callHierarchy/outgoingCalls",
+                         params.dump(),
+                         "outgoingCalls failed");
 
-    for (;;) {
-        if (auto response = impl_->rpc.take_response(id); response.has_value()) {
-            if (response->error) {
-                throw std::runtime_error("outgoingCalls failed: " +
-                                         response->error->message);
-            }
-
-            const auto result_json =
-                response->result_json ? json::parse(*response->result_json)
-                                      : json(nullptr);
-
-            return parse_outgoing_calls(result_json);
-        }
-
-        if (!impl_->rpc.pump_once()) {
-            throw std::runtime_error("LSP EOF while waiting for outgoingCalls response");
-        }
-    }
+    const auto result_json = nlohmann::json::parse(result_text);
+    return parse_outgoing_calls(result_json);
 }
 
 
@@ -829,27 +925,13 @@ std::vector<IncomingCall> Session::incoming_calls(const CallHierarchyItem &item)
         {"item", json_call_hierarchy_item(item)},
     };
 
-    const pcr::rpc::Id id =
-        impl_->rpc.send_request("callHierarchy/incomingCalls", params.dump());
+    const std::string result_text =
+        request_json_raw("callHierarchy/incomingCalls",
+                         params.dump(),
+                         "incomingCalls failed");
 
-    for (;;) {
-        if (auto response = impl_->rpc.take_response(id); response.has_value()) {
-            if (response->error) {
-                throw std::runtime_error("incomingCalls failed: " +
-                                         response->error->message);
-            }
-
-            const auto result_json =
-                response->result_json ? json::parse(*response->result_json)
-                                      : json(nullptr);
-
-            return parse_incoming_calls(result_json);
-        }
-
-        if (!impl_->rpc.pump_once()) {
-            throw std::runtime_error("LSP EOF while waiting for incomingCalls response");
-        }
-    }
+    const auto result_json = nlohmann::json::parse(result_text);
+    return parse_incoming_calls(result_json);
 }
 
 

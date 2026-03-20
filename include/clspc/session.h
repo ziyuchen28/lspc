@@ -16,6 +16,8 @@ struct SessionOptions
     std::filesystem::path root_dir;
     std::string client_name{"clspc"};
     std::string client_version{"0.1"};
+    bool trace_lsp_messages{false};
+    bool trace_request_timing{false};
 };
 
 class Session 
@@ -63,6 +65,9 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
     void ensure_query_document_available(const std::filesystem::path &path);
+    std::string request_json_raw(std::string_view method,
+                                 std::string params_json,
+                                 const char *error_prefix);
 };
 
 }  // namespace clspc

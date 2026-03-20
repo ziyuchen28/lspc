@@ -52,6 +52,17 @@ void require(bool condition, const std::string &message)
     }
 }
 
+
+bool env_flag_enabled(const char *name) 
+{
+    if (const char *env = std::getenv(name)) {
+        const std::string v = env;
+        return !v.empty() && v != "0" && v != "false" && v != "FALSE";
+    }
+    return false;
+}
+
+
 std::string next_arg(int &i, int argc, char **argv, const std::string &flag) 
 {
     if (i + 1 >= argc) {
@@ -60,6 +71,7 @@ std::string next_arg(int &i, int argc, char **argv, const std::string &flag)
     ++i;
     return argv[i];
 }
+
 
 Direction parse_direction(const std::string &value) 
 {
@@ -212,6 +224,8 @@ int main(int argc, char **argv)
         options.root_dir = args.root;
         options.client_name = "clspc-demo";
         options.client_version = "0.1";
+        options.trace_lsp_messages = env_flag_enabled("CLSPC_TRACE_LSP");
+        options.trace_request_timing = env_flag_enabled("CLSPC_TRACE_RPC");
 
 
         Session session(std::move(child), options);
