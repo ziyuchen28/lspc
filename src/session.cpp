@@ -173,6 +173,53 @@ std::vector<DocumentSymbol> parse_document_symbols(const json &j)
 }
 
 
+WorkspaceSymbol parse_workspace_symbol_object(const nlohmann::json &j) 
+{
+    WorkspaceSymbol sym;
+    sym.name = j.value("name", "");
+    sym.detail = j.value("detail", "");
+    sym.container_name = j.value("containerName", "");
+    sym.kind = parse_symbol_kind(j.value("kind", 13));
+
+    if (j.contains("location") && j.at("location").is_object()) {
+        const auto &loc = j.at("location");
+        sym.uri = loc.value("uri", "");
+        if (!sym.uri.empty() && sym.uri.rfind("file://", 0) == 0) {
+            sym.path = path_from_file_uri(sym.uri);
+        }
+        if (loc.contains("range")) {
+            sym.range = parse_range(loc.at("range"));
+        }
+    } else {
+        sym.uri = j.value("uri", "");
+        if (!sym.uri.empty() && sym.uri.rfind("file://", 0) == 0) {
+            sym.path = path_from_file_uri(sym.uri);
+        }
+        if (j.contains("range")) {
+            sym.range = parse_range(j.at("range"));
+        }
+    }
+
+    if (j.contains("data")) {
+        sym.data_json = j.at("data").dump();
+    }
+
+    return sym;
+}
+
+std::vector<WorkspaceSymbol> parse_workspace_symbols(const nlohmann::json &j) 
+{
+    std::vector<WorkspaceSymbol> out;
+    if (j.is_null() || !j.is_array()) {
+        return out;
+    }
+    for (const auto &item : j) {
+        out.push_back(parse_workspace_symbol_object(item));
+    }
+    return out;
+}
+
+
 json json_position(const Position &p) 
 {
     return json{
@@ -806,6 +853,22 @@ std::vector<DocumentSymbol> Session::document_symbols(const std::filesystem::pat
 
     const auto result_json = nlohmann::json::parse(result_text);
     return parse_document_symbols(result_json);
+}
+
+
+std::vector<WorkspaceSymbol> Session::workspace_symbols(std::string query) 
+{
+    nlohmann::json params{
+        {"query", query},
+    };
+
+    const std::string result_text =
+        request_json_raw("workspace/symbol",
+                         params.dump(),
+                         "workspace/symbol failed");
+
+    const auto result_json = nlohmann::json::parse(result_text);
+    return parse_workspace_symbols(result_json);
 }
 
 

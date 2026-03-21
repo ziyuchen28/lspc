@@ -68,6 +68,7 @@ void print_initialize_result(std::ostream &os, const InitializeResult &init)
     os << "referencesProvider=" << (init.has_references_provider ? "true" : "false") << "\n";
     os << "hoverProvider=" << (init.has_hover_provider ? "true" : "false") << "\n";
     os << "documentSymbolProvider=" << (init.has_document_symbol_provider ? "true" : "false") << "\n";
+    os << "workspaceSymbolProvider=" << (init.has_workspace_symbol_provider ? "true" : "false") << "\n";
     os << "callHierarchyProvider=" << (init.has_call_hierarchy_provider ? "true" : "false") << "\n";
 }
 
@@ -85,6 +86,41 @@ void print_document_symbols(std::ostream &os,
            << " selection=" << format_range(sym.selection_range)
            << "\n";
         print_document_symbols(os, sym.children, depth + 1);
+    }
+}
+
+
+void print_workspace_symbols(std::ostream &os,
+                             const std::vector<WorkspaceSymbol> &symbols) 
+{
+    if (symbols.empty()) {
+        os << "(no workspace symbols)\n";
+        return;
+    }
+
+    for (const auto &sym : symbols) {
+        os << "- name=" << sym.name
+           << " logical=" << logical_name(sym.name)
+           << " kind=" << symbol_kind_name(sym.kind)
+           << " file=" << (sym.path.empty() ? "<none>" : sym.path.filename().string());
+
+        if (sym.range.has_value()) {
+            os << " range=" << format_range(*sym.range);
+        }
+
+        if (!sym.detail.empty()) {
+            os << " detail=" << sym.detail;
+        }
+
+        if (!sym.container_name.empty()) {
+            os << " container=" << sym.container_name;
+        }
+
+        if (sym.data_json.has_value()) {
+            os << " data=" << *sym.data_json;
+        }
+
+        os << "\n";
     }
 }
 

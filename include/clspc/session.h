@@ -46,6 +46,7 @@ public:
     void close_file(const std::filesystem::path &path);
 
     std::vector<DocumentSymbol> document_symbols(const std::filesystem::path &path);
+    std::vector<WorkspaceSymbol> workspace_symbols(std::string query);
     std::vector<Location> definition(const std::filesystem::path &path, Position pos);
 
     std::vector<CallHierarchyItem> prepare_call_hierarchy(const std::filesystem::path &path,

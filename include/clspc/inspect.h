@@ -18,6 +18,8 @@ void print_initialize_result(std::ostream &os, const InitializeResult &init);
 void print_document_symbols(std::ostream &os,
                             const std::vector<DocumentSymbol> &symbols,
                             int depth = 0);
+void print_workspace_symbols(std::ostream &os,
+                             const std::vector<WorkspaceSymbol> &symbols);
 void print_call_hierarchy_items(std::ostream &os,
                                 const std::vector<CallHierarchyItem> &items);
 void print_outgoing_calls(std::ostream &os,

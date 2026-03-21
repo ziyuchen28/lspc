@@ -38,8 +38,8 @@ struct LaunchOptions
     std::filesystem::path root_dir;
 
     std::string java_bin{"java"};
-    int xms_mb{256};
-    int xmx_mb{2048};
+    int xms_mb{512};
+    int xmx_mb{8192};
 
     bool log_protocol{false};
     std::string log_level{"INFO"};

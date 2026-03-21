@@ -69,6 +69,19 @@ struct DocumentSymbol
 };
 
 
+struct WorkspaceSymbol 
+{
+    std::string name;
+    std::string detail;
+    std::string container_name;
+    SymbolKind kind{SymbolKind::Variable};
+    std::filesystem::path path;
+    std::string uri;
+    std::optional<Range> range;
+    std::optional<std::string> data_json;
+};
+
+
 enum class DiagnosticSeverity : int 
 {
     Error = 1,
@@ -133,6 +146,7 @@ struct InitializeResult
     bool has_hover_provider{false};
     bool has_document_symbol_provider{false};
     bool has_call_hierarchy_provider{false};
+    bool has_workspace_symbol_provider{false};
 };
 
 }  // namespace clspc
