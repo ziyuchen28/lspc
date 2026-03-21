@@ -7,6 +7,23 @@
 #include <unordered_set>
 
 namespace clspc {
+ 
+
+static char tolower_ascii(char c)
+{
+    return (c >= 'A' && c <= 'Z') ? (c |= 32) : c;
+}
+
+
+static bool isequals_ascii(std::string_view a, std::string_view b)
+{
+    if (a.size() != b.size()) return false;
+    for (std::size_t i = 0; i <= a.size(); i++) {
+        if (tolower_ascii(a[i]) != tolower_ascii(b[i])) return false;
+    }
+    return true;
+}
+
 
 
 static void emit_trace(const ExpandOptions &options, ExpandTraceEvent event) 
@@ -201,7 +218,11 @@ static std::vector<WorkspaceSymbol> select_anchor_candidates(
         if (!is_type_like_kind(sym.kind)) {
             continue;
         }
-        if (logical_name(sym.name) != class_name) {
+        // if (logical_name(sym.name) != class_name) {
+        //     c
+        //     ontinue;
+        // }
+        if (!isequals_ascii(logical_name(sym.name), class_name)) {
             continue;
         }
         if (sym.path.empty()) {
