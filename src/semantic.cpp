@@ -15,10 +15,11 @@ static char tolower_ascii(char c)
 }
 
 
-static bool isequals_ascii(std::string_view a, std::string_view b)
+// case insensitive
+static bool iequals_ascii(std::string_view a, std::string_view b)
 {
     if (a.size() != b.size()) return false;
-    for (std::size_t i = 0; i <= a.size(); i++) {
+    for (std::size_t i = 0; i < a.size(); i++) {
         if (tolower_ascii(a[i]) != tolower_ascii(b[i])) return false;
     }
     return true;
@@ -133,11 +134,11 @@ static std::optional<ResolvedAnchor> try_resolve_method_anchor_in_file_once(
                                        method->selection_range.start);
 
     for (const auto &item : items) {
-        if (logical_name(item.name) == method_name) {
+        if (iequals_ascii(logical_name(item.name), method_name)) {
             return ResolvedAnchor{
                 .file = anchor_file,
                 .class_name = {},
-                .method_name = std::string(method_name),
+                .method_name = item.name,
                 .class_symbol = WorkspaceSymbol{},                
                 .method_symbol = *method,
                 .call_item = item,
@@ -222,7 +223,7 @@ static std::vector<WorkspaceSymbol> select_anchor_candidates(
         //     c
         //     ontinue;
         // }
-        if (!isequals_ascii(logical_name(sym.name), class_name)) {
+        if (!iequals_ascii(logical_name(sym.name), class_name)) {
             continue;
         }
         if (sym.path.empty()) {
@@ -383,7 +384,7 @@ std::optional<DocumentSymbol> find_method_symbol(const std::vector<DocumentSymbo
 {
     for (const auto &sym : symbols) {
         if (sym.kind == SymbolKind::Method &&
-            logical_name(sym.name) == method_name) {
+            iequals_ascii(logical_name(sym.name), method_name)) {
             return sym;
         }
 
