@@ -421,9 +421,9 @@ ExpansionResult expand_outgoing_from_method(Session &session,
 
 
 static std::vector<IncomingCall> wait_for_initial_incoming(Session &session,
-                                                    const CallHierarchyItem &item,
-                                                    const ExpandOptions &options,
-                                                    std::size_t &attempts_out) 
+                                                           const CallHierarchyItem &item,
+                                                           const ExpandOptions &options,
+                                                           std::size_t &attempts_out) 
 {
     const auto deadline = std::chrono::steady_clock::now() + options.ready_timeout;
     while (std::chrono::steady_clock::now() < deadline) {
