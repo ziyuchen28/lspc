@@ -212,5 +212,5 @@ target_compile_features(clspc_mcp_smoke PRIVATE cxx_std_20)
 
 target_link_libraries(clspc_mcp_smoke
     PRIVATE
-        pcr::rpc_nlohmann
+        nlohmann_json::nlohmann_json
 )
