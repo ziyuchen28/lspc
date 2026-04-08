@@ -27,9 +27,16 @@ build: config
 build-integ: config-integ
 	cmake --build $(BUILD_DIR) -j -- --no-print-directory
 
+build: config
+	cmake --build $(BUILD_DIR) -j -- --no-print-directory
+
+
+build-smoke-mcp:
+	cmake -S . -B build
+	cmake --build build --target clspc_mcp_smoke -j -- --no-print-directory
+
 clean:
 	rm -rf $(BUILD_DIR)
-
 
 
 test-all: build
@@ -92,7 +99,7 @@ demo2:
 		--workspace "$(CLSPC_DEMO_WORKSPACE)" \
 		--class "$(CLSPC_DEMO_CLASS)" \
 		--method "$(CLSPC_DEMO_METHOD)" \
-		--max-depth 3 \
+		--max-depth 5 \
 		--direction both \
 
 demo2-trace:
@@ -106,7 +113,7 @@ demo2-trace:
 			--workspace "$(CLSPC_DEMO_WORKSPACE)" \
 			--class "$(CLSPC_DEMO_CLASS)" \
 			--method "$(CLSPC_DEMO_METHOD)" \
-			--max-depth 3 \
+			--max-depth 5 \
 			--direction both
 
 
@@ -121,5 +128,5 @@ demo2-file-trace:
 			--workspace "$(CLSPC_DEMO_WORKSPACE)" \
 			--file "$(CLSPC_DEMO_FILE)" \
 			--method "$(CLSPC_DEMO_METHOD)" \
-			--max-depth 3 \
+			--max-depth 5 \
 			--direction both

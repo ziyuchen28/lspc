@@ -204,4 +204,13 @@ if (CLSPC_BUILD_INTEGRATION_TESTS)
 endif()
 
 
+add_executable(clspc_mcp_smoke
+    tools/clspc_mcp_smoke.cpp
+)
 
+target_compile_features(clspc_mcp_smoke PRIVATE cxx_std_20)
+
+target_link_libraries(clspc_mcp_smoke
+    PRIVATE
+        pcr::rpc_nlohmann
+)

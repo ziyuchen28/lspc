@@ -420,6 +420,7 @@ ExpansionResult expand_outgoing_from_method(Session &session,
 }
 
 
+// expansion could be slow return early when something goes wrong / timeout
 static std::vector<IncomingCall> wait_for_initial_incoming(Session &session,
                                                            const CallHierarchyItem &item,
                                                            const ExpandOptions &options,
@@ -441,9 +442,10 @@ static std::vector<IncomingCall> wait_for_initial_incoming(Session &session,
                 .edge_count = incoming.size(),
                 .message = "initial incoming edge probe result",
             });
-            if (!incoming.empty()) {
-                return incoming;
-            }
+            // if (!incoming.empty()) {
+            //     return incoming;
+            // }
+            return incoming;
         } catch (...) {
         }
         std::this_thread::sleep_for(options.retry_interval);
@@ -474,7 +476,6 @@ ExpansionResult expand_incoming_to_method(Session &session,
                                   result.anchor_item,
                                   options,
                                   result.initial_edge_probe_attempts);
-
     result.initial_edge_count = initial_incoming.size();
 
     std::unordered_set<std::string> visited;
@@ -482,7 +483,8 @@ ExpansionResult expand_incoming_to_method(Session &session,
                                        result.anchor_item,
                                        options,
                                        0,
-                                       visited);
+                                       visited,
+                                       initial_incoming);
     return result;
 }
 
