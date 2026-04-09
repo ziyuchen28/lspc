@@ -465,10 +465,16 @@ json jdtls_document_symbols_result(const json &arguments)
     req.trace_lsp_messages = env_flag_enabled("CLSPC_TRACE_LSP");
     req.trace_request_timing = env_flag_enabled("CLSPC_TRACE_RPC");
 
+    log_line("jdtls_document_symbols service begin");
+
     const clspc::service::DocumentSymbolsResponse resp =
         clspc::service::run_document_symbols(req);
 
+    log_line("jdtls_document_symbols service returned");
+
     const json structured = document_symbols_response_json(resp);
+
+    log_line("jdtls_document_symbols json built");
 
     return json{
         {"content", json::array({
@@ -607,7 +613,11 @@ int main()
                 }
 
                 if (tool_name == "jdtls_document_symbols") {
-                    send_json(make_result(id, jdtls_document_symbols_result(arguments)));
+                    log_line("tools/call jdtls_document_symbols begin");
+                    json result = jdtls_document_symbols_result(arguments);
+                    log_line("tools/call jdtls_document_symbols result ready");
+                    send_json(make_result(id, result));
+                    log_line("tools/call jdtls_document_symbols send done");
                     continue;
                 }
 

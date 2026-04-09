@@ -4,16 +4,29 @@
 #include <filesystem>
 #include <stdexcept>
 #include <utility>
+#include <iostream>
+#include <string_view>
 
 namespace clspc::service {
 
 
 namespace {
 
+void service_trace_line(bool enabled, std::string_view line)
+{
+    if (!enabled) {
+        return;
+    }
+
+    std::cerr << "[service] " << line << "\n";
+    std::cerr.flush();
+}
+
 std::filesystem::path normalize_abs(const std::filesystem::path &path)
 {
     return std::filesystem::absolute(path).lexically_normal();
 }
+
 
 void validate_launch(const clspc::jdtls::LaunchOptions &launch)
 {
@@ -52,7 +65,10 @@ auto with_started_session(const clspc::jdtls::LaunchOptions &launch,
                           bool trace_request_timing,
                           Fn &&fn)
 {
+    const bool trace = trace_lsp_messages || trace_request_timing;
+    service_trace_line(trace, "spawn begin");
     auto child = clspc::jdtls::spawn(launch, clspc::jdtls::current_platform());
+    service_trace_line(trace, "spawn done");
 
     clspc::SessionOptions session_options;
     session_options.root_dir = launch.root_dir;
@@ -62,23 +78,39 @@ auto with_started_session(const clspc::jdtls::LaunchOptions &launch,
     clspc::Session session(std::move(child), session_options);
 
     try {
+        service_trace_line(trace, "initialize begin");
         const clspc::InitializeResult initialize = session.initialize();
+        service_trace_line(trace, "initialize done");
         session.initialized();
-
+        service_trace_line(trace, "initialized notification sent");
+        service_trace_line(trace, "handler begin");
         auto out = std::forward<Fn>(fn)(session, initialize);
-
+        service_trace_line(trace, "handler done");
+        service_trace_line(trace, "shutdown_and_exit begin");
         session.shutdown_and_exit();
+        service_trace_line(trace, "shutdown_and_exit done");
+        service_trace_line(trace, "wait begin");
         session.wait();
+        service_trace_line(trace, "wait done");
+
         return out;
     } catch (...) {
+        service_trace_line(trace, "exception path entered");
+
         try {
+            service_trace_line(trace, "shutdown_and_exit begin (exception path)");
             session.shutdown_and_exit();
+            service_trace_line(trace, "shutdown_and_exit done (exception path)");
         } catch (...) {
+            service_trace_line(trace, "shutdown_and_exit failed (exception path)");
         }
 
         try {
+            service_trace_line(trace, "wait begin (exception path)");
             session.wait();
+            service_trace_line(trace, "wait done (exception path)");
         } catch (...) {
+            service_trace_line(trace, "wait failed (exception path)");
         }
 
         throw;
