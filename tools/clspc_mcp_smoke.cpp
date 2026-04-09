@@ -14,6 +14,7 @@
 #include <nlohmann/json.hpp>
 
 #include "clspc/service.h"
+#include <filesystem>
 
 #define ERR_PARSE -32700
 #define ERR_INVAL_REQ -32600
@@ -24,7 +25,9 @@ constexpr const char* k_protocol_version = "2025-11-25";
 
 using json = nlohmann::json;
 
+
 namespace {
+
 
 std::string getenv_or(std::string_view name, std::string fallback = {})
 {
@@ -34,6 +37,7 @@ std::string getenv_or(std::string_view name, std::string fallback = {})
     return fallback;
 }
 
+
 std::string getenv_required(std::string_view name)
 {
     if (const char *v = std::getenv(std::string(name).c_str())) {
@@ -42,6 +46,56 @@ std::string getenv_required(std::string_view name)
         }
     }
     throw std::runtime_error("missing required environment variable: " + std::string(name));
+}
+
+
+std::filesystem::path parse_required_abs_path(const json &arguments, std::string_view key)
+{
+    const std::string key_str(key);
+
+    if (!arguments.contains(key_str) || !arguments.at(key_str).is_string()) {
+        throw std::runtime_error("argument '" + key_str + "' is required and must be a string");
+    }
+
+    return std::filesystem::absolute(arguments.at(key_str).get<std::string>()).lexically_normal();
+}
+
+
+clspc::jdtls::LaunchOptions parse_launch_arguments(const json &arguments)
+{
+    clspc::jdtls::LaunchOptions launch;
+    launch.root_dir = parse_required_abs_path(arguments, "root");
+    launch.workspace_dir = parse_required_abs_path(arguments, "workspaceDir");
+
+    launch.jdtls_home =
+        arguments.contains("jdtlsHome") && arguments.at("jdtlsHome").is_string()
+            ? std::filesystem::absolute(arguments.at("jdtlsHome").get<std::string>()).lexically_normal()
+            : std::filesystem::absolute(getenv_required("CLSPC_JDTLS_HOME")).lexically_normal();
+
+    launch.java_bin =
+        arguments.contains("javaBin") && arguments.at("javaBin").is_string()
+            ? arguments.at("javaBin").get<std::string>()
+            : getenv_or("CLSPC_JAVA_BIN", "java");
+
+    launch.log_protocol = false;
+    launch.log_level = "INFO";
+    return launch;
+}
+
+json position_json(const clspc::Position &position)
+{
+    return json{
+        {"line", position.line},
+        {"character", position.character}
+    };
+}
+
+json range_json(const clspc::Range &range)
+{
+    return json{
+        {"start", position_json(range.start)},
+        {"end", position_json(range.end)}
+    };
 }
 
 json initialize_result_json(const clspc::InitializeResult &r)
@@ -71,6 +125,39 @@ json initialize_probe_response_json(const clspc::service::InitializeProbeRespons
         {"initialize", initialize_result_json(r.initialize)}
     };
 }
+
+json document_symbol_json(const clspc::DocumentSymbol &symbol)
+{
+    json children = json::array();
+    for (const clspc::DocumentSymbol &child : symbol.children) {
+        children.push_back(document_symbol_json(child));
+    }
+
+    return json{
+        {"name", symbol.name},
+        {"detail", symbol.detail},
+        {"kind", static_cast<int>(symbol.kind)},
+        {"range", range_json(symbol.range)},
+        {"selectionRange", range_json(symbol.selection_range)},
+        {"children", std::move(children)}
+    };
+}
+
+json document_symbols_response_json(const clspc::service::DocumentSymbolsResponse &r)
+{
+    json symbols = json::array();
+    for (const clspc::DocumentSymbol &symbol : r.symbols) {
+        symbols.push_back(document_symbol_json(symbol));
+    }
+
+    return json{
+        {"ok", true},
+        {"file", r.file.string()},
+        {"topLevelCount", r.symbols.size()},
+        {"symbols", std::move(symbols)}
+    };
+}
+
 
 bool trace_enabled() 
 {
@@ -182,11 +269,11 @@ json smoke_echo_tool_definition()
 }
 
 
-json java_initialize_probe_tool_definition()
+json jdtls_initialize_probe_tool_definition()
 {
     return json{
-        {"name", "java_initialize_probe"},
-        {"title", "Java Initialize Probe"},
+        {"name", "jdtls_initialize_probe"},
+        {"title", "Jdtls Initialize Probe"},
         {"description", "Launch JDTLS, initialize an LSP session, and return the server capabilities."},
         {"inputSchema", {
             {"type", "object"},
@@ -209,6 +296,42 @@ json java_initialize_probe_tool_definition()
                 }}
             }},
             {"required", json::array({"root", "workspaceDir"})}
+        }}
+    };
+}
+
+
+json jdtls_document_symbols_tool_definition()
+{
+    return json{
+        {"name", "jdtls_document_symbols"},
+        {"title", "Jdtls Document Symbols"},
+        {"description", "Launch JDTLS, initialize an LSP session, and return hierarchical document symbols for a Java source file."},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", {
+                {"root", {
+                    {"type", "string"},
+                    {"description", "Absolute path to the repo root."}
+                }},
+                {"workspaceDir", {
+                    {"type", "string"},
+                    {"description", "Absolute path to the persistent JDTLS workspace/data dir."}
+                }},
+                {"file", {
+                    {"type", "string"},
+                    {"description", "Absolute path to the Java source file to inspect."}
+                }},
+                {"jdtlsHome", {
+                    {"type", "string"},
+                    {"description", "Optional JDTLS install dir. Defaults to CLSPC_JDTLS_HOME."}
+                }},
+                {"javaBin", {
+                    {"type", "string"},
+                    {"description", "Optional java executable. Defaults to CLSPC_JAVA_BIN or 'java'."}
+                }}
+            }},
+            {"required", json::array({"root", "workspaceDir", "file"})}
         }}
     };
 }
@@ -249,33 +372,16 @@ json smoke_echo_result(const json &arguments)
 }
 
 
-json java_initialize_probe_result(const json &arguments)
+json jdtls_initialize_probe_result(const json &arguments)
 {
     if (!arguments.is_object()) {
         throw std::runtime_error("arguments must be an object");
     }
 
-    if (!arguments.contains("root") || !arguments.at("root").is_string()) {
-        throw std::runtime_error("argument 'root' is required and must be a string");
-    }
-
-    if (!arguments.contains("workspaceDir") || !arguments.at("workspaceDir").is_string()) {
-        throw std::runtime_error("argument 'workspaceDir' is required and must be a string");
-    }
-
     clspc::service::InitializeProbeRequest req;
-    req.launch.root_dir =
-        std::filesystem::absolute(arguments.at("root").get<std::string>()).lexically_normal();
-    req.launch.workspace_dir =
-        std::filesystem::absolute(arguments.at("workspaceDir").get<std::string>()).lexically_normal();
-    req.launch.jdtls_home =
-        arguments.contains("jdtlsHome") && arguments.at("jdtlsHome").is_string()
-            ? std::filesystem::absolute(arguments.at("jdtlsHome").get<std::string>()).lexically_normal()
-            : std::filesystem::absolute(getenv_required("CLSPC_JDTLS_HOME")).lexically_normal();
-    req.launch.java_bin =
-        arguments.contains("javaBin") && arguments.at("javaBin").is_string()
-            ? arguments.at("javaBin").get<std::string>()
-            : getenv_or("CLSPC_JAVA_BIN", "java");
+    req.launch = parse_launch_arguments(arguments);
+    req.trace_lsp_messages = false;
+    req.trace_request_timing = false;
 
     const clspc::service::InitializeProbeResponse resp =
         clspc::service::run_initialize_probe(req);
@@ -286,7 +392,37 @@ json java_initialize_probe_result(const json &arguments)
         {"content", json::array({
             {
                 {"type", "text"},
-                {"text", "java_initialize_probe ok: " + resp.initialize.server_name}
+                {"text", "jdtls_initialize_probe ok: " + resp.initialize.server_name}
+            }
+        })},
+        {"structuredContent", structured}
+    };
+}
+
+
+json jdtls_document_symbols_result(const json &arguments)
+{
+    if (!arguments.is_object()) {
+        throw std::runtime_error("arguments must be an object");
+    }
+
+    clspc::service::DocumentSymbolsRequest req;
+    req.launch = parse_launch_arguments(arguments);
+    req.file = parse_required_abs_path(arguments, "file");
+    req.trace_lsp_messages = false;
+    req.trace_request_timing = false;
+
+    const clspc::service::DocumentSymbolsResponse resp =
+        clspc::service::run_document_symbols(req);
+
+    const json structured = document_symbols_response_json(resp);
+
+    return json{
+        {"content", json::array({
+            {
+                {"type", "text"},
+                {"text", "jdtls_document_symbols ok: " + resp.file.filename().string() +
+                         " (" + std::to_string(resp.symbols.size()) + " top-level symbols)"}
             }
         })},
         {"structuredContent", structured}
@@ -378,7 +514,8 @@ int main()
             send_json(make_result(id, json{
                 {"tools", json::array({
                     smoke_echo_tool_definition(),
-                    java_initialize_probe_tool_definition()
+                    jdtls_initialize_probe_tool_definition(),
+                    jdtls_document_symbols_tool_definition()
                 })}
             }));
             continue;
@@ -403,8 +540,13 @@ int main()
                     continue;
                 }
 
-                if (tool_name == "java_initialize_probe") {
-                    send_json(make_result(id, java_initialize_probe_result(arguments)));
+                if (tool_name == "jdtls_initialize_probe") {
+                    send_json(make_result(id, jdtls_initialize_probe_result(arguments)));
+                    continue;
+                }
+
+                if (tool_name == "jdtls_document_symbols") {
+                    send_json(make_result(id, jdtls_document_symbols_result(arguments)));
                     continue;
                 }
 
