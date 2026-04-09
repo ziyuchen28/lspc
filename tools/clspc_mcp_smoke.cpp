@@ -6,6 +6,7 @@
 #include <iostream>
 #include <optional>
 #include <sstream>
+#include <fcntl.h>
 #include <string>
 #include <string_view>
 
@@ -27,6 +28,58 @@ using json = nlohmann::json;
 
 
 namespace {
+
+
+bool env_flag_enabled(std::string_view name)
+{
+    const std::string key(name);
+
+    if (const char *v = std::getenv(key.c_str())) {
+        const std::string s(v);
+        return !s.empty() && s != "0" && s != "false" && s != "FALSE";
+    }
+
+    return false;
+}
+
+std::optional<std::string> getenv_nonempty(std::string_view name)
+{
+    const std::string key(name);
+
+    if (const char *v = std::getenv(key.c_str())) {
+        if (*v != '\0') {
+            return std::string(v);
+        }
+    }
+
+    return std::nullopt;
+}
+
+void maybe_redirect_stderr_to_log_file()
+{
+    const std::optional<std::string> path = getenv_nonempty("CLSPC_LOG_FILE");
+    if (!path.has_value()) {
+        return;
+    }
+
+    const int fd = ::open(path->c_str(), O_CREAT | O_WRONLY | O_APPEND, 0644);
+    if (fd < 0) {
+        throw std::runtime_error(
+            "failed to open CLSPC_LOG_FILE '" + *path + "': " + std::strerror(errno));
+    }
+
+    if (::dup2(fd, STDERR_FILENO) < 0) {
+        const std::string err = std::strerror(errno);
+        ::close(fd);
+        throw std::runtime_error(
+            "failed to redirect stderr to CLSPC_LOG_FILE '" + *path + "': " + err);
+    }
+
+    ::close(fd);
+
+    std::cerr.setf(std::ios::unitbuf);
+    std::cerr << "[clspc_mcp_smoke] stderr redirected to " << *path << "\n";
+}
 
 
 std::string getenv_or(std::string_view name, std::string fallback = {})
@@ -409,8 +462,8 @@ json jdtls_document_symbols_result(const json &arguments)
     clspc::service::DocumentSymbolsRequest req;
     req.launch = parse_launch_arguments(arguments);
     req.file = parse_required_abs_path(arguments, "file");
-    req.trace_lsp_messages = false;
-    req.trace_request_timing = false;
+    req.trace_lsp_messages = env_flag_enabled("CLSPC_TRACE_LSP");
+    req.trace_request_timing = env_flag_enabled("CLSPC_TRACE_RPC");
 
     const clspc::service::DocumentSymbolsResponse resp =
         clspc::service::run_document_symbols(req);
@@ -458,6 +511,14 @@ json initialize_result(const json &params)
 
 int main() 
 {
+
+    try {
+        maybe_redirect_stderr_to_log_file();
+    } catch (const std::exception &ex) {
+        std::cerr << "[clspc_mcp_smoke] fatal logging setup error: "
+                  << ex.what() << "\n";
+        return 2;
+    }
     log_line("server starting");
 
     std::string line;
