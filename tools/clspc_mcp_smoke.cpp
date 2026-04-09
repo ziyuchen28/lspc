@@ -13,6 +13,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "clspc/service.h"
+
 #define ERR_PARSE -32700
 #define ERR_INVAL_REQ -32600
 #define ERR_INVAL_PARAM -32602
@@ -23,6 +25,52 @@ constexpr const char* k_protocol_version = "2025-11-25";
 using json = nlohmann::json;
 
 namespace {
+
+std::string getenv_or(std::string_view name, std::string fallback = {})
+{
+    if (const char *v = std::getenv(std::string(name).c_str())) {
+        return *v ? std::string(v) : fallback;
+    }
+    return fallback;
+}
+
+std::string getenv_required(std::string_view name)
+{
+    if (const char *v = std::getenv(std::string(name).c_str())) {
+        if (*v) {
+            return std::string(v);
+        }
+    }
+    throw std::runtime_error("missing required environment variable: " + std::string(name));
+}
+
+json initialize_result_json(const clspc::InitializeResult &r)
+{
+    return json{
+        {"serverName", r.server_name},
+        {"serverVersion", r.server_version},
+        {"hasDefinitionProvider", r.has_definition_provider},
+        {"hasImplementationProvider", r.has_implementation_provider},
+        {"hasReferencesProvider", r.has_references_provider},
+        {"hasHoverProvider", r.has_hover_provider},
+        {"hasDocumentSymbolProvider", r.has_document_symbol_provider},
+        {"hasCallHierarchyProvider", r.has_call_hierarchy_provider},
+        {"hasWorkspaceSymbolProvider", r.has_workspace_symbol_provider}
+    };
+}
+
+json initialize_probe_response_json(const clspc::service::InitializeProbeResponse &r,
+                                    const clspc::jdtls::LaunchOptions &launch)
+{
+    return json{
+        {"ok", true},
+        {"root", launch.root_dir.string()},
+        {"workspaceDir", launch.workspace_dir.string()},
+        {"jdtlsHome", launch.jdtls_home.string()},
+        {"javaBin", launch.java_bin},
+        {"initialize", initialize_result_json(r.initialize)}
+    };
+}
 
 bool trace_enabled() 
 {
@@ -134,6 +182,38 @@ json smoke_echo_tool_definition()
 }
 
 
+json java_initialize_probe_tool_definition()
+{
+    return json{
+        {"name", "java_initialize_probe"},
+        {"title", "Java Initialize Probe"},
+        {"description", "Launch JDTLS, initialize an LSP session, and return the server capabilities."},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", {
+                {"root", {
+                    {"type", "string"},
+                    {"description", "Absolute path to the repo root."}
+                }},
+                {"workspaceDir", {
+                    {"type", "string"},
+                    {"description", "Absolute path to the persistent JDTLS workspace/data dir."}
+                }},
+                {"jdtlsHome", {
+                    {"type", "string"},
+                    {"description", "Optional JDTLS install dir. Defaults to CLSPC_JDTLS_HOME."}
+                }},
+                {"javaBin", {
+                    {"type", "string"},
+                    {"description", "Optional java executable. Defaults to CLSPC_JAVA_BIN or 'java'."}
+                }}
+            }},
+            {"required", json::array({"root", "workspaceDir"})}
+        }}
+    };
+}
+
+
 json smoke_echo_result(const json &arguments) 
 {
     if (!arguments.is_object()) {
@@ -149,7 +229,7 @@ json smoke_echo_result(const json &arguments)
 
     const std::string echoed = uppercase ? uppercase_copy(message) : message;
 
-    json structured{
+    json structured {
         {"ok", true},
         {"echoed", echoed},
         {"uppercase", uppercase},
@@ -157,11 +237,56 @@ json smoke_echo_result(const json &arguments)
         {"timestamp_utc", now_utc_iso8601()}
     };
 
-    return json{
+    return json {
         {"content", json::array({
             {
                 {"type", "text"},
                 {"text", "smoke_echo ok: " + echoed}
+            }
+        })},
+        {"structuredContent", structured}
+    };
+}
+
+
+json java_initialize_probe_result(const json &arguments)
+{
+    if (!arguments.is_object()) {
+        throw std::runtime_error("arguments must be an object");
+    }
+
+    if (!arguments.contains("root") || !arguments.at("root").is_string()) {
+        throw std::runtime_error("argument 'root' is required and must be a string");
+    }
+
+    if (!arguments.contains("workspaceDir") || !arguments.at("workspaceDir").is_string()) {
+        throw std::runtime_error("argument 'workspaceDir' is required and must be a string");
+    }
+
+    clspc::service::InitializeProbeRequest req;
+    req.launch.root_dir =
+        std::filesystem::absolute(arguments.at("root").get<std::string>()).lexically_normal();
+    req.launch.workspace_dir =
+        std::filesystem::absolute(arguments.at("workspaceDir").get<std::string>()).lexically_normal();
+    req.launch.jdtls_home =
+        arguments.contains("jdtlsHome") && arguments.at("jdtlsHome").is_string()
+            ? std::filesystem::absolute(arguments.at("jdtlsHome").get<std::string>()).lexically_normal()
+            : std::filesystem::absolute(getenv_required("CLSPC_JDTLS_HOME")).lexically_normal();
+    req.launch.java_bin =
+        arguments.contains("javaBin") && arguments.at("javaBin").is_string()
+            ? arguments.at("javaBin").get<std::string>()
+            : getenv_or("CLSPC_JAVA_BIN", "java");
+
+    const clspc::service::InitializeProbeResponse resp =
+        clspc::service::run_initialize_probe(req);
+
+    const json structured = initialize_probe_response_json(resp, req.launch);
+
+    return json{
+        {"content", json::array({
+            {
+                {"type", "text"},
+                {"text", "java_initialize_probe ok: " + resp.initialize.server_name}
             }
         })},
         {"structuredContent", structured}

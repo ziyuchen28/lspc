@@ -24,6 +24,7 @@ add_library(clspc
     src/inspect.cpp
     src/source_window.cpp
     src/semantic.cpp
+    src/service.cpp
 )
 
 target_compile_features(clspc PUBLIC cxx_std_20)
@@ -212,5 +213,6 @@ target_compile_features(clspc_mcp_smoke PRIVATE cxx_std_20)
 
 target_link_libraries(clspc_mcp_smoke
     PRIVATE
+        clspc
         nlohmann_json::nlohmann_json
 )
