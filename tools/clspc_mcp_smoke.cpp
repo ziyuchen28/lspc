@@ -377,7 +377,8 @@ int main()
             }
             send_json(make_result(id, json{
                 {"tools", json::array({
-                    smoke_echo_tool_definition()
+                    smoke_echo_tool_definition(),
+                    java_initialize_probe_tool_definition()
                 })}
             }));
             continue;
