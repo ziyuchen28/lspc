@@ -397,32 +397,37 @@ int main()
             const std::string tool_name = params.value("name", "");
             const json arguments = params.value("arguments", json::object());
 
-            if (tool_name != "smoke_echo") {
-                // per MCP, "tool not found" should be a protocol-level error,
-                // not an isError tool result
+            try {
+                if (tool_name == "smoke_echo") {
+                    send_json(make_result(id, smoke_echo_result(arguments)));
+                    continue;
+                }
+
+                if (tool_name == "java_initialize_probe") {
+                    send_json(make_result(id, java_initialize_probe_result(arguments)));
+                    continue;
+                }
+
+                // Per MCP, unknown tool should be a protocol-level error,
+                // not an isError tool result.
                 send_json(make_error(
                     id,
                     ERR_NO_METHOD,
                     "tool not found",
                     json{{"tool", tool_name}}
                 ));
-                continue;
-            }
-
-            try {
-                send_json(make_result(id, smoke_echo_result(arguments)));
-            } catch (const std::exception& ex) {
-                // tool execution errors should be visible to the model as a tool result
+            } catch (const std::exception &ex) {
                 send_json(make_result(id, json{
                     {"content", json::array({
                         {
                             {"type", "text"},
-                            {"text", std::string("smoke_echo failed: ") + ex.what()}
+                            {"text", tool_name + " failed: " + std::string(ex.what())}
                         }
                     })},
                     {"structuredContent", {
                         {"ok", false},
-                        {"error", ex.what()}
+                        {"error", ex.what()},
+                        {"tool", tool_name}
                     }},
                     {"isError", true}
                 }));
