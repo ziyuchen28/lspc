@@ -356,7 +356,7 @@ json expand_calls_response_json(const clspc::service::ExpandCallsResponse &resp)
 
     return json{
         {"ok", true},
-        {"direction", "outgoing"},
+        {"direction", resp.direction},
         {"resolvedAnchor", resolved_anchor_json(resp.resolved_anchor)},
         {"root", expanded_node_json(resp.root)},
         {"snippetCount", resp.snippets.size()},
@@ -609,8 +609,9 @@ json jdtls_expand_calls_tool_definition()
                 }},
                 {"direction", {
                     {"type", "string"},
-                    {"description", "Currently only 'outgoing' is supported."},
-                    {"enum", json::array({"outgoing"})}
+                    {"description", "Call graph direction. Currently supports 'outgoing' and 'incoming'."},
+                    {"enum", json::array({"outgoing", "incoming"})},
+                    {"default", "outgoing"}
                 }},
                 {"maxDepth", {
                     {"type", "integer"},
@@ -818,7 +819,7 @@ json jdtls_expand_calls_result(const json &arguments)
     req.launch = parse_launch_arguments(arguments);
     req.class_name = parse_required_string(arguments, "class");
     req.method_name = parse_required_string(arguments, "method");
-    req.direction = arguments.value("direction", std::string("outgoing"));
+    req.direction = arguments.value("direction", std::string("incoming"));
     req.max_depth = arguments.value("maxDepth", 3);
     req.snippet_padding_before =
         static_cast<std::size_t>(arguments.value("snippetPaddingBefore", 1));
@@ -844,7 +845,8 @@ json jdtls_expand_calls_result(const json &arguments)
         {"content", json::array({
             {
                 {"type", "text"},
-                {"text", "jdtls_expand_calls ok: outgoing tree for " +
+                {"text", "jdtls_expand_calls ok: " +
+                         resp.direction + " tree for " +
                          resp.resolved_anchor.class_name + "." +
                          resp.resolved_anchor.method_name +
                          " (" + std::to_string(resp.snippets.size()) +

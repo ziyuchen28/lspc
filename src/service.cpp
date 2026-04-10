@@ -508,6 +508,11 @@ ExpandCallsResponse LiveSession::expand_calls(const ExpandCallsRequest &req)
     if (req.method_name.empty()) {
         throw std::runtime_error("ExpandCallsRequest.method_name must not be empty");
     }
+    if (req.direction != "outgoing" && req.direction != "incoming") {
+        throw std::runtime_error(
+            "ExpandCallsRequest.direction currently supports only "
+            "'outgoing' or 'incoming'");
+    }
     const clspc::jdtls::LaunchOptions launch = prepare_launch(req.launch);
     auto &entry =
         impl_->ensure_started(launch,
@@ -530,13 +535,22 @@ ExpandCallsResponse LiveSession::expand_calls(const ExpandCallsRequest &req)
     expand_options.retry_interval = req.retry_interval;
     expand_options.snippet_padding_before = req.snippet_padding_before;
     expand_options.snippet_padding_after = req.snippet_padding_after;
-    const clspc::ExpansionResult expansion =
-        clspc::expand_outgoing_from_method(*entry.session,
-                                           resolved.file,
-                                           req.method_name,
-                                           expand_options);
+
+    clspc::ExpansionResult expansion;
+    if (req.direction == "outgoing") {
+        expansion = clspc::expand_outgoing_from_method(*entry.session,
+                                                       resolved.file,
+                                                       req.method_name,
+                                                       expand_options);
+    } else {
+        expansion = clspc::expand_incoming_to_method(*entry.session,
+                                                     resolved.file,
+                                                     req.method_name,
+                                                     expand_options);
+    }
 
     ExpandCallsResponse out;
+    out.direction = req.direction;
     out.resolved_anchor = resolved;
     out.root = expansion.root;
     out.snippets = clspc::collect_unique_snippets(out.root);

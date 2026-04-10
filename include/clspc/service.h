@@ -60,7 +60,7 @@ struct ExpandCallsRequest
     std::string class_name;
     std::string method_name;
 
-    std::string direction{"outgoing"};
+    std::string direction{"incoming"};
 
     int max_depth{3};
     std::size_t snippet_padding_before{1};
@@ -75,6 +75,7 @@ struct ExpandCallsRequest
 
 struct ExpandCallsResponse
 {
+    std::string direction;
     clspc::ResolvedAnchor resolved_anchor;
     clspc::ExpandedNode root;
     std::vector<clspc::ExpandedSnippet> snippets;
