@@ -7,10 +7,78 @@
 #include <iostream>
 #include <string_view>
 
+#include <thread>
+#include <unistd.h>
+#include <fcntl.h>
+#include <cerrno>
+#include <cstring>
+
 namespace clspc::service {
 
 
 namespace {
+
+struct StderrDrainer
+{
+    int fd{-1};
+    int out_fd{-1};
+    std::thread th;
+
+    explicit StderrDrainer(int stderr_fd, const std::string &path)
+        : fd(stderr_fd)
+    {
+        out_fd = ::open(path.c_str(), O_CREAT | O_WRONLY | O_APPEND, 0644);
+        if (out_fd < 0) {
+            throw std::runtime_error(
+                "failed to open stderr log file: " + std::string(std::strerror(errno)));
+        }
+
+        th = std::thread([this]() {
+            char buf[4096];
+
+            for (;;) {
+                const ssize_t n = ::read(fd, buf, sizeof(buf));
+                if (n == 0) {
+                    break;
+                }
+                if (n < 0) {
+                    if (errno == EINTR) {
+                        continue;
+                    }
+                    break;
+                }
+
+                ssize_t written = 0;
+                while (written < n) {
+                    const ssize_t m = ::write(out_fd, buf + written, static_cast<std::size_t>(n - written));
+                    if (m < 0) {
+                        if (errno == EINTR) {
+                            continue;
+                        }
+                        return;
+                    }
+                    written += m;
+                }
+            }
+        });
+    }
+
+    ~StderrDrainer()
+    {
+        if (th.joinable()) {
+            th.join();
+        }
+        if (out_fd >= 0) {
+            ::close(out_fd);
+        }
+    }
+
+    StderrDrainer(const StderrDrainer &) = delete;
+    StderrDrainer &operator=(const StderrDrainer &) = delete;
+    StderrDrainer(StderrDrainer &&) = delete;
+    StderrDrainer &operator=(StderrDrainer &&) = delete;
+};
+
 
 void service_trace_line(bool enabled, std::string_view line)
 {
@@ -69,6 +137,16 @@ auto with_started_session(const clspc::jdtls::LaunchOptions &launch,
     service_trace_line(trace, "spawn begin");
     auto child = clspc::jdtls::spawn(launch, clspc::jdtls::current_platform());
     service_trace_line(trace, "spawn done");
+
+
+    std::optional<StderrDrainer> stderr_drainer;
+    if (const char *path = std::getenv("CLSPC_CHILD_STDERR_LOG")) {
+        if (*path != '\0') {
+            service_trace_line(trace, "stderr drainer begin");
+            stderr_drainer.emplace(child.stderr_read_fd(), path);
+            service_trace_line(trace, "stderr drainer ready");
+        }
+    }
 
     clspc::SessionOptions session_options;
     session_options.root_dir = launch.root_dir;
