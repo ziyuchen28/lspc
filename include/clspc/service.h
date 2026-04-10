@@ -73,12 +73,20 @@ struct ExpandCallsRequest
     bool trace_request_timing{false};
 };
 
+
+struct ExpandedCallTree
+{
+    clspc::ExpandedNode root;
+    std::vector<clspc::ExpandedSnippet> snippets;
+};
+
 struct ExpandCallsResponse
 {
     std::string direction;
     clspc::ResolvedAnchor resolved_anchor;
-    clspc::ExpandedNode root;
-    std::vector<clspc::ExpandedSnippet> snippets;
+
+    std::optional<ExpandedCallTree> outgoing;
+    std::optional<ExpandedCallTree> incoming;
 };
 
 

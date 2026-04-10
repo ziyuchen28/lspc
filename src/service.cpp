@@ -508,16 +508,20 @@ ExpandCallsResponse LiveSession::expand_calls(const ExpandCallsRequest &req)
     if (req.method_name.empty()) {
         throw std::runtime_error("ExpandCallsRequest.method_name must not be empty");
     }
-    if (req.direction != "outgoing" && req.direction != "incoming") {
+    if (req.direction != "outgoing" &&
+        req.direction != "incoming" &&
+        req.direction != "both") {
         throw std::runtime_error(
             "ExpandCallsRequest.direction currently supports only "
-            "'outgoing' or 'incoming'");
+            "'outgoing', 'incoming', or 'both'");
     }
+
     const clspc::jdtls::LaunchOptions launch = prepare_launch(req.launch);
     auto &entry =
         impl_->ensure_started(launch,
                               req.trace_lsp_messages,
                               req.trace_request_timing);
+
     clspc::ResolveAnchorOptions resolve_options;
     resolve_options.scope_root = launch.root_dir;
     resolve_options.ready_timeout = req.ready_timeout;
@@ -536,28 +540,37 @@ ExpandCallsResponse LiveSession::expand_calls(const ExpandCallsRequest &req)
     expand_options.snippet_padding_before = req.snippet_padding_before;
     expand_options.snippet_padding_after = req.snippet_padding_after;
 
-    clspc::ExpansionResult expansion;
-    if (req.direction == "outgoing") {
-        expansion = clspc::expand_outgoing_from_method(*entry.session,
-                                                       resolved.file,
-                                                       req.method_name,
-                                                       expand_options);
-    } else {
-        expansion = clspc::expand_incoming_to_method(*entry.session,
-                                                     resolved.file,
-                                                     req.method_name,
-                                                     expand_options);
-    }
-
     ExpandCallsResponse out;
     out.direction = req.direction;
     out.resolved_anchor = resolved;
-    out.root = expansion.root;
-    out.snippets = clspc::collect_unique_snippets(out.root);
+
+    if (req.direction == "outgoing" || req.direction == "both") {
+        const clspc::ExpansionResult expansion =
+            clspc::expand_outgoing_from_method(*entry.session,
+                                               resolved.file,
+                                               req.method_name,
+                                               expand_options);
+        ExpandedCallTree tree;
+        tree.root = expansion.root;
+        tree.snippets = clspc::collect_unique_snippets(tree.root);
+        out.outgoing = std::move(tree);
+    }
+
+    if (req.direction == "incoming" || req.direction == "both") {
+        const clspc::ExpansionResult expansion =
+            clspc::expand_incoming_to_method(*entry.session,
+                                             resolved.file,
+                                             req.method_name,
+                                             expand_options);
+
+        ExpandedCallTree tree;
+        tree.root = expansion.root;
+        tree.snippets = clspc::collect_unique_snippets(tree.root);
+        out.incoming = std::move(tree);
+    }
+
     return out;
 }
-
-
 
 
 }  // namespace clspc::service

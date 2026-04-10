@@ -347,22 +347,40 @@ json expanded_snippet_json(const clspc::ExpandedSnippet &snippet)
     };
 }
 
-json expand_calls_response_json(const clspc::service::ExpandCallsResponse &resp)
+json expanded_call_tree_json(const clspc::service::ExpandedCallTree &tree)
 {
     json snippets = json::array();
-    for (const clspc::ExpandedSnippet &snippet : resp.snippets) {
+    for (const clspc::ExpandedSnippet &snippet : tree.snippets) {
         snippets.push_back(expanded_snippet_json(snippet));
     }
 
     return json{
-        {"ok", true},
-        {"direction", resp.direction},
-        {"resolvedAnchor", resolved_anchor_json(resp.resolved_anchor)},
-        {"root", expanded_node_json(resp.root)},
-        {"snippetCount", resp.snippets.size()},
+        {"root", expanded_node_json(tree.root)},
+        {"snippetCount", tree.snippets.size()},
         {"snippets", std::move(snippets)}
     };
 }
+
+
+json expand_calls_response_json(const clspc::service::ExpandCallsResponse &resp)
+{
+    json out{
+        {"ok", true},
+        {"direction", resp.direction},
+        {"resolvedAnchor", resolved_anchor_json(resp.resolved_anchor)}
+    };
+
+    if (resp.outgoing.has_value()) {
+        out["outgoing"] = expanded_call_tree_json(*resp.outgoing);
+    }
+
+    if (resp.incoming.has_value()) {
+        out["incoming"] = expanded_call_tree_json(*resp.incoming);
+    }
+
+    return out;
+}
+
 
 bool trace_enabled() 
 {
@@ -609,8 +627,8 @@ json jdtls_expand_calls_tool_definition()
                 }},
                 {"direction", {
                     {"type", "string"},
-                    {"description", "Call graph direction. Currently supports 'outgoing' and 'incoming'."},
-                    {"enum", json::array({"outgoing", "incoming"})},
+                    {"description", "Call graph direction. Supports 'outgoing', 'incoming', or 'both'."},
+                    {"enum", json::array({"outgoing", "incoming", "both"})},
                     {"default", "outgoing"}
                 }},
                 {"maxDepth", {
@@ -837,7 +855,7 @@ json jdtls_expand_calls_result(const json &arguments)
         live_session().expand_calls(req);
 
     log_line("jdtls_expand_calls service returned"
-             " snippets=" + std::to_string(resp.snippets.size()));
+             " direction=" + resp.direction);
 
     const json structured = expand_calls_response_json(resp);
 
@@ -848,9 +866,7 @@ json jdtls_expand_calls_result(const json &arguments)
                 {"text", "jdtls_expand_calls ok: " +
                          resp.direction + " tree for " +
                          resp.resolved_anchor.class_name + "." +
-                         resp.resolved_anchor.method_name +
-                         " (" + std::to_string(resp.snippets.size()) +
-                         " snippets)"}
+                         resp.resolved_anchor.method_name}
             }
         })},
         {"structuredContent", structured}
