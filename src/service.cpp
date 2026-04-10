@@ -500,6 +500,51 @@ ResolveAnchorResponse LiveSession::resolve_anchor(const ResolveAnchorRequest &re
 }
 
 
+ExpandCallsResponse LiveSession::expand_calls(const ExpandCallsRequest &req)
+{
+    if (req.class_name.empty()) {
+        throw std::runtime_error("ExpandCallsRequest.class_name must not be empty");
+    }
+    if (req.method_name.empty()) {
+        throw std::runtime_error("ExpandCallsRequest.method_name must not be empty");
+    }
+    const clspc::jdtls::LaunchOptions launch = prepare_launch(req.launch);
+    auto &entry =
+        impl_->ensure_started(launch,
+                              req.trace_lsp_messages,
+                              req.trace_request_timing);
+    clspc::ResolveAnchorOptions resolve_options;
+    resolve_options.scope_root = launch.root_dir;
+    resolve_options.ready_timeout = req.ready_timeout;
+    resolve_options.retry_interval = req.retry_interval;
+    const clspc::ResolvedAnchor resolved =
+        clspc::resolve_anchor(*entry.session,
+                              req.class_name,
+                              req.method_name,
+                              resolve_options);
+
+    clspc::ExpandOptions expand_options;
+    expand_options.scope_root = launch.root_dir;
+    expand_options.max_depth = req.max_depth;
+    expand_options.ready_timeout = req.ready_timeout;
+    expand_options.retry_interval = req.retry_interval;
+    expand_options.snippet_padding_before = req.snippet_padding_before;
+    expand_options.snippet_padding_after = req.snippet_padding_after;
+    const clspc::ExpansionResult expansion =
+        clspc::expand_outgoing_from_method(*entry.session,
+                                           resolved.file,
+                                           req.method_name,
+                                           expand_options);
+
+    ExpandCallsResponse out;
+    out.resolved_anchor = resolved;
+    out.root = expansion.root;
+    out.snippets = clspc::collect_unique_snippets(out.root);
+    return out;
+}
+
+
+
 
 }  // namespace clspc::service
 

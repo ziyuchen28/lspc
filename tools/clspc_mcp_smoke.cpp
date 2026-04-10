@@ -289,6 +289,81 @@ json resolve_anchor_response_json(const clspc::service::ResolveAnchorResponse &r
     return out;
 }
 
+json resolved_anchor_json(const clspc::ResolvedAnchor &anchor)
+{
+    json out{
+        {"file", anchor.file.string()},
+        {"className", anchor.class_name},
+        {"methodName", anchor.method_name},
+        {"attempts", anchor.attempts},
+        {"candidateCount", anchor.candidate_count},
+        {"methodSymbol", document_symbol_json(anchor.method_symbol)},
+        {"callItem", call_hierarchy_item_json(anchor.call_item)}
+    };
+
+    if (anchor.class_symbol.has_value()) {
+        out["classSymbol"] = workspace_symbol_json(*anchor.class_symbol);
+    }
+
+    return out;
+}
+
+json source_window_json(const clspc::SourceWindow &window)
+{
+    return json{
+        {"path", window.path.string()},
+        {"startLine", window.start_line},
+        {"endLine", window.end_line},
+        {"text", window.text}
+    };
+}
+
+json expanded_node_json(const clspc::ExpandedNode &node)
+{
+    json from_ranges = json::array();
+    for (const clspc::Range &range : node.from_ranges) {
+        from_ranges.push_back(range_json(range));
+    }
+
+    json children = json::array();
+    for (const clspc::ExpandedNode &child : node.children) {
+        children.push_back(expanded_node_json(child));
+    }
+
+    return json{
+        {"item", call_hierarchy_item_json(node.item)},
+        {"fromRanges", std::move(from_ranges)},
+        {"stopReason", node.stop_reason},
+        {"children", std::move(children)}
+    };
+}
+
+json expanded_snippet_json(const clspc::ExpandedSnippet &snippet)
+{
+    return json{
+        {"item", call_hierarchy_item_json(snippet.item)},
+        {"stopReason", snippet.stop_reason},
+        {"window", source_window_json(snippet.window)}
+    };
+}
+
+json expand_calls_response_json(const clspc::service::ExpandCallsResponse &resp)
+{
+    json snippets = json::array();
+    for (const clspc::ExpandedSnippet &snippet : resp.snippets) {
+        snippets.push_back(expanded_snippet_json(snippet));
+    }
+
+    return json{
+        {"ok", true},
+        {"direction", "outgoing"},
+        {"resolvedAnchor", resolved_anchor_json(resp.resolved_anchor)},
+        {"root", expanded_node_json(resp.root)},
+        {"snippetCount", resp.snippets.size()},
+        {"snippets", std::move(snippets)}
+    };
+}
+
 bool trace_enabled() 
 {
     const char *env = std::getenv("CLSPC_MCP_TRACE");
@@ -507,6 +582,66 @@ json jdtls_resolve_anchor_tool_definition()
 }
 
 
+json jdtls_expand_calls_tool_definition()
+{
+    return json{
+        {"name", "jdtls_expand_calls"},
+        {"title", "JDTLS Expand Calls"},
+        {"description", "Expand a Java method call tree. This first version supports direction='outgoing' only."},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", {
+                {"root", {
+                    {"type", "string"},
+                    {"description", "Absolute path to the repo root."}
+                }},
+                {"workspaceDir", {
+                    {"type", "string"},
+                    {"description", "Absolute path to the persistent JDTLS workspace/data dir."}
+                }},
+                {"class", {
+                    {"type", "string"},
+                    {"description", "Class name to resolve."}
+                }},
+                {"method", {
+                    {"type", "string"},
+                    {"description", "Method name to expand."}
+                }},
+                {"direction", {
+                    {"type", "string"},
+                    {"description", "Currently only 'outgoing' is supported."},
+                    {"enum", json::array({"outgoing"})}
+                }},
+                {"maxDepth", {
+                    {"type", "integer"},
+                    {"description", "Maximum expansion depth."},
+                    {"default", 3}
+                }},
+                {"snippetPaddingBefore", {
+                    {"type", "integer"},
+                    {"description", "Number of context lines before the anchor range."},
+                    {"default", 1}
+                }},
+                {"snippetPaddingAfter", {
+                    {"type", "integer"},
+                    {"description", "Number of context lines after the anchor range."},
+                    {"default", 1}
+                }},
+                {"jdtlsHome", {
+                    {"type", "string"},
+                    {"description", "Optional JDTLS install dir. Defaults to CLSPC_JDTLS_HOME."}
+                }},
+                {"javaBin", {
+                    {"type", "string"},
+                    {"description", "Optional java executable. Defaults to CLSPC_JAVA_BIN or 'java'."}
+                }}
+            }},
+            {"required", json::array({"root", "workspaceDir", "class", "method"})}
+        }}
+    };
+}
+
+
 json smoke_echo_result(const json &arguments) 
 {
     if (!arguments.is_object()) {
@@ -672,6 +807,55 @@ json jdtls_resolve_anchor_result(const json &arguments)
     };
 }
 
+
+json jdtls_expand_calls_result(const json &arguments)
+{
+    if (!arguments.is_object()) {
+        throw std::runtime_error("arguments must be an object");
+    }
+
+    clspc::service::ExpandCallsRequest req;
+    req.launch = parse_launch_arguments(arguments);
+    req.class_name = parse_required_string(arguments, "class");
+    req.method_name = parse_required_string(arguments, "method");
+    req.direction = arguments.value("direction", std::string("outgoing"));
+    req.max_depth = arguments.value("maxDepth", 3);
+    req.snippet_padding_before =
+        static_cast<std::size_t>(arguments.value("snippetPaddingBefore", 1));
+    req.snippet_padding_after =
+        static_cast<std::size_t>(arguments.value("snippetPaddingAfter", 1));
+    req.trace_lsp_messages = env_flag_enabled("CLSPC_TRACE_LSP");
+    req.trace_request_timing = env_flag_enabled("CLSPC_TRACE_RPC");
+
+    log_line("jdtls_expand_calls service begin"
+             " class=" + req.class_name +
+             " method=" + req.method_name +
+             " direction=" + req.direction);
+
+    const clspc::service::ExpandCallsResponse resp =
+        live_session().expand_calls(req);
+
+    log_line("jdtls_expand_calls service returned"
+             " snippets=" + std::to_string(resp.snippets.size()));
+
+    const json structured = expand_calls_response_json(resp);
+
+    return json{
+        {"content", json::array({
+            {
+                {"type", "text"},
+                {"text", "jdtls_expand_calls ok: outgoing tree for " +
+                         resp.resolved_anchor.class_name + "." +
+                         resp.resolved_anchor.method_name +
+                         " (" + std::to_string(resp.snippets.size()) +
+                         " snippets)"}
+            }
+        })},
+        {"structuredContent", structured}
+    };
+}
+
+
 } // namespace
 
 
@@ -743,7 +927,8 @@ int main()
                     smoke_echo_tool_definition(),
                     jdtls_initialize_probe_tool_definition(),
                     jdtls_document_symbols_tool_definition(),
-                    jdtls_resolve_anchor_tool_definition()
+                    jdtls_resolve_anchor_tool_definition(),
+                    jdtls_expand_calls_tool_definition()
                 })}
             }));
             continue;
@@ -791,8 +976,16 @@ int main()
                     continue;
                 }
 
+                if (tool_name == "jdtls_expand_calls") {
+                    log_line("tools/call jdtls_expand_calls begin");
+                    json result = jdtls_expand_calls_result(arguments);
+                    log_line("tools/call jdtls_expand_calls result ready");
+                    send_json(make_result(id, result));
+                    log_line("tools/call jdtls_expand_calls send done");
+                    continue;
+                }
 
-                // Per MCP, unknown tool should be a protocol-level error,
+                // per MCP, unknown tool should be a protocol-level error,
                 // not an isError tool result.
                 send_json(make_error(
                     id,
