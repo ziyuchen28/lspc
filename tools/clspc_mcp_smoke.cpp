@@ -30,28 +30,34 @@ using json = nlohmann::json;
 namespace {
 
 
+std::string parse_required_string(const json &arguments, std::string_view key)
+{
+    const std::string key_str(key);
+    if (!arguments.contains(key_str) || !arguments.at(key_str).is_string()) {
+        throw std::runtime_error("argument '" + key_str + "' is required and must be a string");
+    }
+    return arguments.at(key_str).get<std::string>();
+}
+
+
 bool env_flag_enabled(std::string_view name)
 {
     const std::string key(name);
-
     if (const char *v = std::getenv(key.c_str())) {
         const std::string s(v);
         return !s.empty() && s != "0" && s != "false" && s != "FALSE";
     }
-
     return false;
 }
 
 std::optional<std::string> getenv_nonempty(std::string_view name)
 {
     const std::string key(name);
-
     if (const char *v = std::getenv(key.c_str())) {
         if (*v != '\0') {
             return std::string(v);
         }
     }
-
     return std::nullopt;
 }
 
@@ -211,6 +217,70 @@ json document_symbols_response_json(const clspc::service::DocumentSymbolsRespons
     };
 }
 
+
+json workspace_symbol_json(const clspc::WorkspaceSymbol &symbol)
+{
+    json out{
+        {"name", symbol.name},
+        {"detail", symbol.detail},
+        {"containerName", symbol.container_name},
+        {"kind", static_cast<int>(symbol.kind)},
+        {"path", symbol.path.string()},
+        {"uri", symbol.uri}
+    };
+
+    if (symbol.range.has_value()) {
+        out["range"] = range_json(*symbol.range);
+    }
+
+    if (symbol.data_json.has_value()) {
+        out["dataJson"] = *symbol.data_json;
+    }
+
+    return out;
+}
+
+json call_hierarchy_item_json(const clspc::CallHierarchyItem &item)
+{
+    json out{
+        {"name", item.name},
+        {"detail", item.detail},
+        {"kind", static_cast<int>(item.kind)},
+        {"path", item.path.string()},
+        {"uri", item.uri},
+        {"range", range_json(item.range)},
+        {"selectionRange", range_json(item.selection_range)}
+    };
+
+    if (item.data_json.has_value()) {
+        out["dataJson"] = *item.data_json;
+    }
+
+    return out;
+}
+
+
+json resolve_anchor_response_json(const clspc::service::ResolveAnchorResponse &resp)
+{
+    const clspc::ResolvedAnchor &anchor = resp.anchor;
+
+    json out{
+        {"ok", true},
+        {"file", anchor.file.string()},
+        {"className", anchor.class_name},
+        {"methodName", anchor.method_name},
+        {"attempts", anchor.attempts},
+        {"candidateCount", anchor.candidate_count},
+        {"methodSymbol", document_symbol_json(anchor.method_symbol)},
+        {"callItem", call_hierarchy_item_json(anchor.call_item)}
+    };
+
+    if (anchor.class_symbol.has_value()) {
+        out["classSymbol"] = workspace_symbol_json(*anchor.class_symbol);
+    }
+
+    return out;
+}
 
 bool trace_enabled() 
 {
@@ -390,6 +460,46 @@ json jdtls_document_symbols_tool_definition()
 }
 
 
+json jdtls_resolve_anchor_tool_definition()
+{
+    return json{
+        {"name", "jdtls_resolve_anchor"},
+        {"title", "JDTLS Resolve Anchor"},
+        {"description", "Resolve a Java class+method into a source file, method symbol, and call-hierarchy anchor item."},
+        {"inputSchema", {
+            {"type", "object"},
+            {"properties", {
+                {"root", {
+                    {"type", "string"},
+                    {"description", "Absolute path to the repo root."}
+                }},
+                {"workspaceDir", {
+                    {"type", "string"},
+                    {"description", "Absolute path to the persistent JDTLS workspace/data dir."}
+                }},
+                {"class", {
+                    {"type", "string"},
+                    {"description", "Simple or logical class name to resolve."}
+                }},
+                {"method", {
+                    {"type", "string"},
+                    {"description", "Method name to resolve."}
+                }},
+                {"jdtlsHome", {
+                    {"type", "string"},
+                    {"description", "Optional JDTLS install dir. Defaults to CLSPC_JDTLS_HOME."}
+                }},
+                {"javaBin", {
+                    {"type", "string"},
+                    {"description", "Optional java executable. Defaults to CLSPC_JAVA_BIN or 'java'."}
+                }}
+            }},
+            {"required", json::array({"root", "workspaceDir", "class", "method"})}
+        }}
+    };
+}
+
+
 json smoke_echo_result(const json &arguments) 
 {
     if (!arguments.is_object()) {
@@ -512,6 +622,46 @@ json initialize_result(const json &params)
     };
 }
 
+
+json jdtls_resolve_anchor_result(const json &arguments)
+{
+    if (!arguments.is_object()) {
+        throw std::runtime_error("arguments must be an object");
+    }
+
+    clspc::service::ResolveAnchorRequest req;
+    req.launch = parse_launch_arguments(arguments);
+    req.class_name = parse_required_string(arguments, "class");
+    req.method_name = parse_required_string(arguments, "method");
+    req.trace_lsp_messages = env_flag_enabled("CLSPC_TRACE_LSP");
+    req.trace_request_timing = env_flag_enabled("CLSPC_TRACE_RPC");
+
+    log_line("jdtls_resolve_anchor service begin"
+             " class=" + req.class_name +
+             " method=" + req.method_name);
+
+    const clspc::service::ResolveAnchorResponse resp =
+        clspc::service::run_resolve_anchor(req);
+
+    log_line("jdtls_resolve_anchor service returned"
+             " file=" + resp.anchor.file.string());
+
+    const json structured = resolve_anchor_response_json(resp);
+
+    return json{
+        {"content", json::array({
+            {
+                {"type", "text"},
+                {"text", "jdtls_resolve_anchor ok: " +
+                         resp.anchor.class_name + "." +
+                         resp.anchor.method_name + " -> " +
+                         resp.anchor.file.filename().string()}
+            }
+        })},
+        {"structuredContent", structured}
+    };
+}
+
 } // namespace
 
 
@@ -582,7 +732,8 @@ int main()
                 {"tools", json::array({
                     smoke_echo_tool_definition(),
                     jdtls_initialize_probe_tool_definition(),
-                    jdtls_document_symbols_tool_definition()
+                    jdtls_document_symbols_tool_definition(),
+                    jdtls_resolve_anchor_tool_definition()
                 })}
             }));
             continue;
@@ -620,6 +771,16 @@ int main()
                     log_line("tools/call jdtls_document_symbols send done");
                     continue;
                 }
+
+                if (tool_name == "jdtls_resolve_anchor") {
+                    log_line("tools/call jdtls_resolve_anchor begin");
+                    json result = jdtls_resolve_anchor_result(arguments);
+                    log_line("tools/call jdtls_resolve_anchor result ready");
+                    send_json(make_result(id, result));
+                    log_line("tools/call jdtls_resolve_anchor send done");
+                    continue;
+                }
+
 
                 // Per MCP, unknown tool should be a protocol-level error,
                 // not an isError tool result.

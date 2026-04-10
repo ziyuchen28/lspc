@@ -141,6 +141,7 @@ auto with_started_session(const clspc::jdtls::LaunchOptions &launch,
 
     std::optional<StderrDrainer> stderr_drainer;
     if (const char *path = std::getenv("CLSPC_CHILD_STDERR_LOG")) {
+        // handle empty path
         if (*path != '\0') {
             service_trace_line(trace, "stderr drainer begin");
             stderr_drainer.emplace(child.stderr_read_fd(), path);
@@ -235,6 +236,40 @@ DocumentSymbolsResponse run_document_symbols(const DocumentSymbolsRequest &req)
             DocumentSymbolsResponse out;
             out.file = file;
             out.symbols = session.document_symbols(file);
+            return out;
+        });
+}
+
+
+ResolveAnchorResponse run_resolve_anchor(const ResolveAnchorRequest &req)
+{
+    if (req.class_name.empty()) {
+        throw std::runtime_error("ResolveAnchorRequest.class_name must not be empty");
+    }
+
+    if (req.method_name.empty()) {
+        throw std::runtime_error("ResolveAnchorRequest.method_name must not be empty");
+    }
+
+    const clspc::jdtls::LaunchOptions launch = prepare_launch(req.launch);
+
+    return with_started_session(
+        launch,
+        req.trace_lsp_messages,
+        req.trace_request_timing,
+        [&](clspc::Session &session, const clspc::InitializeResult &initialize) {
+            (void)initialize;
+
+            clspc::ResolveAnchorOptions options;
+            options.scope_root = launch.root_dir;
+            options.ready_timeout = req.ready_timeout;
+            options.retry_interval = req.retry_interval;
+
+            ResolveAnchorResponse out;
+            out.anchor = clspc::resolve_anchor(session,
+                                               req.class_name,
+                                               req.method_name,
+                                               options);
             return out;
         });
 }
