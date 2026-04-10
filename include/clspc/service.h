@@ -3,6 +3,7 @@
 #include "clspc/jdtls.h"
 #include "clspc/lsp_types.h"
 #include "clspc/semantic.h"
+#include <memory>
 
 namespace clspc::service {
 
@@ -56,5 +57,27 @@ struct ResolveAnchorResponse
 };
 
 ResolveAnchorResponse run_resolve_anchor(const ResolveAnchorRequest &req);
+
+
+class LiveSession
+{
+public:
+    LiveSession();
+    ~LiveSession();
+
+    LiveSession(const LiveSession &) = delete;
+    LiveSession &operator=(const LiveSession &) = delete;
+
+    InitializeProbeResponse initialize_probe(const InitializeProbeRequest &req);
+    DocumentSymbolsResponse document_symbols(const DocumentSymbolsRequest &req);
+    ResolveAnchorResponse resolve_anchor(const ResolveAnchorRequest &req);
+
+    void shutdown() noexcept;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
 
 }  // namespace clspc::service

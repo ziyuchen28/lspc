@@ -30,6 +30,13 @@ using json = nlohmann::json;
 namespace {
 
 
+clspc::service::LiveSession &live_session()
+{
+    static clspc::service::LiveSession s;
+    return s;
+}
+
+
 std::string parse_required_string(const json &arguments, std::string_view key)
 {
     const std::string key_str(key);
@@ -640,8 +647,11 @@ json jdtls_resolve_anchor_result(const json &arguments)
              " class=" + req.class_name +
              " method=" + req.method_name);
 
+    // const clspc::service::ResolveAnchorResponse resp =
+    //     clspc::service::run_resolve_anchor(req);
+
     const clspc::service::ResolveAnchorResponse resp =
-        clspc::service::run_resolve_anchor(req);
+        live_session().resolve_anchor(req);
 
     log_line("jdtls_resolve_anchor service returned"
              " file=" + resp.anchor.file.string());
@@ -818,7 +828,12 @@ int main()
         send_json(make_error(id, -32601, "method not found"));
     }
 
+    // log_line("stdin closed, exiting");
+
+    log_line("stdin closed, shutting down live session");
+    live_session().shutdown();
     log_line("stdin closed, exiting");
+
     return 0;
 }
 
